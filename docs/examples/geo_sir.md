@@ -23,7 +23,7 @@ Data obtained from [this link](http://adamw523.com/toronto-geojson/).
 
 ## How to run
 
-To run the model interactively, run `mesa runserver` in [this directory](https://github.com/projectmesa/mesa-examples/tree/main/gis/geo_sir). e.g.
+To run the model interactively, run `mesa runserver` in [this directory](https://github.com/mesa/mesa-examples/tree/main/gis/geo_sir). e.g.
 
 ```bash
 mesa runserver

@@ -10,7 +10,7 @@
 
 ## Summary
 
-This is an implementation of the [Uganda Example](https://github.com/abmgis/abmgis/tree/master/Chapter05-GIS/Models/UgandaExample) in Python, using [Mesa](https://github.com/projectmesa/mesa) and [Mesa-Geo](https://github.com/projectmesa/mesa-geo).
+This is an implementation of the [Uganda Example](https://github.com/abmgis/abmgis/tree/master/Chapter05-GIS/Models/UgandaExample) in Python, using [Mesa](https://github.com/mesa/mesa) and [Mesa-Geo](https://github.com/mesa/mesa-geo).
 
 ### GeoSpace
 
@@ -22,7 +22,7 @@ The GeoAgents are people, created based on the population data. As this is a sim
 
 ## How to run
 
-To run the model interactively, run `mesa runserver` in [this directory](https://github.com/projectmesa/mesa-examples/tree/main/gis/population). e.g.
+To run the model interactively, run `mesa runserver` in [this directory](https://github.com/mesa/mesa-examples/tree/main/gis/population). e.g.
 
 ```bash
 mesa runserver

@@ -32,7 +32,7 @@ jobs:
     - name: Checkout mesa-examples
       uses: actions/checkout@v5
       with:
-        repository: projectmesa/mesa-examples
+        repository: mesa/mesa-examples
         path: mesa-examples
     - name: Test examples
       run: |

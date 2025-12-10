@@ -75,8 +75,8 @@ examples = [
 ]
 
 [project.urls]
-homepage = "https://github.com/projectmesa/mesa-geo"
-repository = "https://github.com/projectmesa/mesa-geo"
+homepage = "https://github.com/mesa/mesa-geo"
+repository = "https://github.com/mesa/mesa-geo"
 
 [project.scripts]
 mesa = "mesa.main:cli"

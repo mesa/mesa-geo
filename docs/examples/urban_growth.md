@@ -10,11 +10,11 @@
 
 ## Summary
 
-This is an implementation of the [UrbanGrowth Model](https://github.com/abmgis/abmgis/tree/master/Chapter06-IntegratingABMandGIS/Models/UrbanGrowth) in Python, using [Mesa](https://github.com/projectmesa/mesa) and [Mesa-Geo](https://github.com/projectmesa/mesa-geo).
+This is an implementation of the [UrbanGrowth Model](https://github.com/abmgis/abmgis/tree/master/Chapter06-IntegratingABMandGIS/Models/UrbanGrowth) in Python, using [Mesa](https://github.com/mesa/mesa) and [Mesa-Geo](https://github.com/mesa/mesa-geo).
 
 ## How to run
 
-To run the model interactively, run `mesa runserver` in [this directory](https://github.com/projectmesa/mesa-examples/tree/main/gis/urban_growth). e.g.
+To run the model interactively, run `mesa runserver` in [this directory](https://github.com/mesa/mesa-examples/tree/main/gis/urban_growth). e.g.
 
 ```bash
 mesa runserver

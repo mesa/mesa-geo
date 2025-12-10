@@ -22,7 +22,7 @@ There are two types of GeoAgents: people and regions. Each person resides in a r
 
 ## How to run
 
-To run the model interactively, run `mesa runserver` in [this directory](https://github.com/projectmesa/mesa-examples/tree/main/gis/geo_schelling_points). e.g.
+To run the model interactively, run `mesa runserver` in [this directory](https://github.com/mesa/mesa-examples/tree/main/gis/geo_schelling_points). e.g.
 
 ```bash
 mesa runserver

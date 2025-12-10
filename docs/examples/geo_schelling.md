@@ -22,7 +22,7 @@ NUTS-2 regions are the GeoAgents. The neighbors of a polygon are considered thos
 
 ## How to Run
 
-To run the model interactively, run `mesa runserver` in [this directory](https://github.com/projectmesa/mesa-examples/tree/main/gis/geo_schelling). e.g.
+To run the model interactively, run `mesa runserver` in [this directory](https://github.com/mesa/mesa-examples/tree/main/gis/geo_schelling). e.g.
 
 ```bash
 mesa runserver

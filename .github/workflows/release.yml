@@ -36,7 +36,7 @@ jobs:
       - name: Build distributions
         run: python -m build
       - name: Upload package as artifact to GitHub
-        if: github.repository == 'projectmesa/mesa-geo' && startsWith(github.ref, 'refs/tags')
+        if: github.repository == 'mesa/mesa-geo' && startsWith(github.ref, 'refs/tags')
         uses: actions/upload-artifact@v4
         with:
           name: package

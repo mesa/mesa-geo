@@ -13,9 +13,9 @@ In no particular order, examples include:
 
 No contribution is too small. Although, contributions can be too big, so let's discuss via [Matrix] or via an [issue].
 
-[Mesa discussions]: https://github.com/projectmesa/mesa/discussions
+[Mesa discussions]: https://github.com/mesa/mesa/discussions
 [Matrix]: https://matrix.to/#/#project-mesa:matrix.org
-[issue]: https://github.com/projectmesa/mesa-geo/issues
+[issue]: https://github.com/mesa/mesa-geo/issues
 
 **To submit a contribution**
 
@@ -36,7 +36,7 @@ No contribution is too small. Although, contributions can be too big, so let's d
 - Describe the change w/ ticket number(s) that the code fixes.
 
 [Clone your repository]: https://help.github.com/articles/cloning-a-repository/
-[GH Actions build]: https://github.com/projectmesa/mesa-geo/actions/workflows/build_lint.yml
+[GH Actions build]: https://github.com/mesa/mesa-geo/actions/workflows/build_lint.yml
 [Create a pull request]: https://help.github.com/articles/creating-a-pull-request/
 [pre-commit]: https://github.com/pre-commit/pre-commit
 [black]: https://github.com/psf/black
@@ -91,7 +91,7 @@ Licensing
 
 The license of this project is located in [LICENSE]. By submitting a contribution to this project, you are agreeing that your contribution will be released under the terms of this license.
 
-[LICENSE]: https://github.com/projectmesa/mesa-geo/blob/main/LICENSE
+[LICENSE]: https://github.com/mesa/mesa-geo/blob/main/LICENSE
 
 Special Thanks
 --------------
