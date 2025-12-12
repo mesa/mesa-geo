@@ -39,7 +39,7 @@ No contribution is too small. Although, contributions can be too big, so let's d
 [GH Actions build]: https://github.com/mesa/mesa-geo/actions/workflows/build_lint.yml
 [Create a pull request]: https://help.github.com/articles/creating-a-pull-request/
 [pre-commit]: https://github.com/pre-commit/pre-commit
-[black]: https://github.com/psf/ruff
+[black]: https://github.com/astral-sh/ruff
 
 Testing and Code Standards
 --------------------------
