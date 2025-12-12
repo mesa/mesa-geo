@@ -30,7 +30,7 @@ No contribution is too small. Although, contributions can be too big, so let's d
 - Git commit your changes with a meaningful message: `git commit -m "Fix issue X"`
 - If implementing a new feature, include some documentation in docs folder.
 - Make sure that your submission passes the [GH Actions build]. See "Testing and Standards below" to be able to run these locally.
-- Make sure that your code is formatted according to the [black] standard (you can do it via [pre-commit]).
+- Make sure that your code is formatted according to the [ruff] standard (you can do it via [pre-commit]).
 - Push your changes to your fork on Github: `git push origin NAME_OF_BRANCH`.
 - [Create a pull request].
 - Describe the change w/ ticket number(s) that the code fixes.
@@ -39,12 +39,12 @@ No contribution is too small. Although, contributions can be too big, so let's d
 [GH Actions build]: https://github.com/mesa/mesa-geo/actions/workflows/build_lint.yml
 [Create a pull request]: https://help.github.com/articles/creating-a-pull-request/
 [pre-commit]: https://github.com/pre-commit/pre-commit
-[black]: https://github.com/psf/black
+[black]: https://github.com/psf/ruff
 
 Testing and Code Standards
 --------------------------
 
-[![](https://codecov.io/gh/projectmesa/mesa-geo/branch/main/graph/badge.svg)](https://codecov.io/gh/projectmesa/mesa-geo) [![](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![](https://codecov.io/gh/projectmesa/mesa-geo/branch/main/graph/badge.svg)](https://codecov.io/gh/projectmesa/mesa-geo) [![](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 As part of our contribution process, we practice continuous integration and use GH Actions to help enforce best practices.
 
@@ -68,7 +68,7 @@ We test by implementing simple models and through traditional unit tests in the 
 pytest --cov=mesa_geo tests/
 ```
 
-With respect to code standards, we follow [PEP8] and the [Google Style Guide]. We recommend to use [black] as an automated code formatter. You can automatically format your code using [pre-commit], which will prevent `git commit` of unstyled code and will automatically apply black style so you can immediately re-run `git commit`. To set up pre-commit run the following commands:
+With respect to code standards, we follow [PEP8] and the [Google Style Guide]. We recommend to use [ruff] as an automated code formatter. You can automatically format your code using [pre-commit], which will prevent `git commit` of unstyled code and will automatically apply ruff style so you can immediately re-run `git commit`. To set up pre-commit run the following commands:
 
 ```bash
 pip install pre-commit
@@ -84,7 +84,7 @@ ruff .
 [PEP8]: https://www.python.org/dev/peps/pep-0008
 [Google Style Guide]: https://google.github.io/styleguide/pyguide.html
 [pre-commit]: https://github.com/pre-commit/pre-commit
-[black]: https://github.com/psf/black
+[ruff]: https://github.com/astral-sh/ruff
 
 Licensing
 ---------
