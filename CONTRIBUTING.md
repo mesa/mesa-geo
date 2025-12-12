@@ -44,7 +44,7 @@ No contribution is too small. Although, contributions can be too big, so let's d
 Testing and Code Standards
 --------------------------
 
-[![](https://codecov.io/gh/projectmesa/mesa-geo/branch/main/graph/badge.svg)](https://codecov.io/gh/projectmesa/mesa-geo) [![](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![codecov badge](https://codecov.io/gh/projectmesa/mesa-geo/branch/main/graph/badge.svg)](https://codecov.io/gh/projectmesa/mesa-geo) [![code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 As part of our contribution process, we practice continuous integration and use GH Actions to help enforce best practices.
 
