@@ -37,7 +37,7 @@ jobs:
         run: python -m build
       - name: Upload package as artifact to GitHub
         if: github.repository == 'mesa/mesa-geo' && startsWith(github.ref, 'refs/tags')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: package
           path: dist/
