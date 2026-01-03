@@ -506,7 +506,7 @@ class RasterLayer(RasterBase):
         src_crs = rio.crs.CRS.from_user_input(layer.crs)
         dst_crs = rio.crs.CRS.from_user_input(crs)
         if not layer.crs.is_exact_same(crs):
-            transform, dst_width, dst_height = calculate_default_transform(
+            transform, _, _ = calculate_default_transform(
                 src_crs,
                 dst_crs,
                 self.width,
