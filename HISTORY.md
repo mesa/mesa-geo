@@ -1,6 +1,23 @@
 Release History
 ---------------
 
+# 0.9.2 (2026-01-05)
+
+## What's Changed
+### 📜 Documentation improvements
+* Replace CITATION.bib with CITATION.cff for better GitHub integration by @EwoutH in https://github.com/mesa/mesa-geo/pull/272
+* Update organization name from `projectmesa` to `mesa` by @EwoutH in https://github.com/mesa/mesa-geo/pull/289
+* Update contact email. by @jackiekazil in https://github.com/mesa/mesa-geo/pull/290
+* docs: replace black with ruff in contribution guide by @falloficarus22 in https://github.com/mesa/mesa-geo/pull/292
+### 🔧 Maintenance
+* pin mesa to <3.3 due to solaraviz compatibility by @wang-boyu in https://github.com/mesa/mesa-geo/pull/294
+
+## New Contributors
+* @jackiekazil made their first contribution in https://github.com/mesa/mesa-geo/pull/290
+* @falloficarus22 made their first contribution in https://github.com/mesa/mesa-geo/pull/292
+
+**Full Changelog**: https://github.com/mesa/mesa-geo/compare/v0.9.1...v0.9.2
+
 # 0.9.1 (2025-02-04)
 
 ## What's Changed
