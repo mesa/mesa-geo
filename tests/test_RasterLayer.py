@@ -2,7 +2,7 @@ import unittest
 
 import mesa
 import numpy as np
-import warnings 
+
 import mesa_geo as mg
 
 
