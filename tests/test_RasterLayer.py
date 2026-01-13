@@ -72,8 +72,8 @@ class TestRasterLayer(unittest.TestCase):
         # We expect 3 layers: val, elevation, and the new unnamed one.
         # Since they are all identical raster_data, the order doesn't matter for equality check.
         np.testing.assert_array_equal(
-            self.raster_layer.get_raster(), 
-            np.concatenate((raster_data, raster_data, raster_data))
+            self.raster_layer.get_raster(),
+            np.concatenate((raster_data, raster_data, raster_data)),
         )
         with self.assertRaises(ValueError):
             self.raster_layer.get_raster("not_existing_attr")

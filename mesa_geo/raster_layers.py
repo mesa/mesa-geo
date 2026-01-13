@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
-import warnings 
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, cast, overload
 
