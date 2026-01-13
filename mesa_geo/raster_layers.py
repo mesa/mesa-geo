@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, cast, overload
 
@@ -161,22 +162,84 @@ class Cell(Agent):
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
     """
 
-    pos: Coordinate | None
-    indices: Coordinate | None
+    xy: Coordinate | None
+    grid_pos: Coordinate | None
+    rowcol: Coordinate | None
 
-    def __init__(self, model, pos=None, indices=None):
+    def __init__(
+        self,
+        model,
+        pos=None,
+        indices=None,
+        xy=None,
+        grid_pos=None,
+        rowcol=None,
+    ):
         """
         Initialize a cell.
 
-        :param pos: Position of the cell in (x, y) format.
-            Origin is at lower left corner of the grid
-        :param indices: Indices of the cell in (row, col) format.
-            Origin is at upper left corner of the grid
+        :param pos: (Deprecated) Position of the cell in (x, y) format.
+            Origin is at lower left corner of the grid. Use grid_pos instead.
+        :param indices: (Deprecated) Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid. Use rowcol instead.
+        :param xy: Real-world coordinates (x, y) of the cell center.
+        :param grid_pos: Position of the cell in (x, y) format.
+            Origin is at lower left corner of the grid.
+        :param rowcol: Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid.
         """
 
         super().__init__(model)
-        self.pos = pos
-        self.indices = indices
+
+        # Handle grid_pos vs pos
+        if grid_pos is not None:
+            self.grid_pos = grid_pos
+        else:
+            self.grid_pos = pos
+
+        # Handle rowcol vs indices
+        if rowcol is not None:
+            self.rowcol = rowcol
+        else:
+            self.rowcol = indices
+
+        self.xy = xy
+
+    @property
+    def pos(self):
+        warnings.warn(
+            "cell.pos is deprecated, use cell.grid_pos instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.grid_pos
+
+    @pos.setter
+    def pos(self, value):
+        warnings.warn(
+            "cell.pos is deprecated, use cell.grid_pos instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        self.grid_pos = value
+
+    @property
+    def indices(self):
+        warnings.warn(
+            "cell.indices is deprecated, use cell.rowcol instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.rowcol
+
+    @indices.setter
+    def indices(self, value):
+        warnings.warn(
+            "cell.indices is deprecated, use cell.rowcol instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        self.rowcol = value
 
     def step(self):
         pass
@@ -234,7 +297,16 @@ class RasterLayer(RasterBase):
             col: list[cell_cls] = []
             for y in range(self.height):
                 row_idx, col_idx = self.height - y - 1, x
-                col.append(self.cell_cls(model, pos=(x, y), indices=(row_idx, col_idx)))
+                # Calculate real-world coordinates (center of the cell)
+                rx, ry = self.transform * (col_idx + 0.5, row_idx + 0.5)
+                col.append(
+                    self.cell_cls(
+                        model,
+                        xy=(rx, ry),
+                        grid_pos=(x, y),
+                        rowcol=(row_idx, col_idx),
+                    )
+                )
             self.cells.append(col)
 
     @property
@@ -529,7 +601,7 @@ class RasterLayer(RasterBase):
 
         values = np.empty(shape=(4, self.height, self.width))
         for cell in self:
-            row, col = cell.indices
+            row, col = cell.rowcol
             values[:, row, col] = colormap(cell)
         return ImageLayer(values=values, crs=self.crs, total_bounds=self.total_bounds)
 
