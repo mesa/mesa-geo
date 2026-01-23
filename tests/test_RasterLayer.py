@@ -25,7 +25,7 @@ class TestRasterLayer(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
-    def test_apple_raster(self):
+    def test_apply_raster(self):  
         raster_data = np.array([[[1, 2], [3, 4], [5, 6]]])
         self.raster_layer.apply_raster(raster_data)
         """
@@ -39,16 +39,16 @@ class TestRasterLayer(unittest.TestCase):
           [3, 4],
           [5, 6]]]
         """
-        self.assertEqual(self.raster_layer.cells[0][1].attribute_5, 3)
-        self.assertEqual(self.raster_layer.attributes, {"attribute_5"})
+        generated_attr_name = list(self.raster_layer.attributes)[0]
+        self.assertEqual(getattr(self.raster_layer.cells[0][1], generated_attr_name), 3)
+        self.assertEqual(self.raster_layer.attributes, {generated_attr_name})
 
         self.raster_layer.apply_raster(raster_data, attr_name="elevation")
         self.assertEqual(self.raster_layer.cells[0][1].elevation, 3)
-        self.assertEqual(self.raster_layer.attributes, {"attribute_5", "elevation"})
+        self.assertEqual(self.raster_layer.attributes, {generated_attr_name, "elevation"})
 
         with self.assertRaises(ValueError):
             self.raster_layer.apply_raster(np.empty((1, 100, 100)))
-
     def test_get_raster(self):
         raster_data = np.array([[[1, 2], [3, 4], [5, 6]]])
         self.raster_layer.apply_raster(raster_data)

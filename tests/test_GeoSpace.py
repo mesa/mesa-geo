@@ -273,3 +273,30 @@ class TestGeoSpace(unittest.TestCase):
             self.geo_space.get_neighbors(self.polygon_agent)[0].unique_id,
             self.touching_agent.unique_id,
         )
+    def test_to_crs_not_inplace(self):
+        model = mesa.Model()
+        space = mg.GeoSpace(crs="epsg:4326")
+        
+        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
+        space.add_agents([agent])
+
+        new_space = space.to_crs("epsg:3857", inplace=False)
+
+        self.assertEqual(new_space.crs.to_string(), "EPSG:3857")
+        self.assertEqual(space.crs.to_string(), "EPSG:4326")
+
+        new_agent = new_space.agents[0]
+        self.assertIsNot(new_agent, agent)
+        self.assertEqual(new_agent.crs.to_string(), "EPSG:3857")
+
+    def test_to_crs_inplace(self):
+        model = mesa.Model()
+        space = mg.GeoSpace(crs="epsg:4326")
+        
+        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
+        space.add_agents([agent])
+
+        space.to_crs("epsg:3857", inplace=True)
+
+        self.assertEqual(space.crs.to_string(), "EPSG:3857")
+        self.assertEqual(space.agents[0].crs.to_string(), "EPSG:3857")
