@@ -54,15 +54,13 @@ class GeoSpace(GeoBase):
                 agent.to_crs(crs, inplace=True)
             for layer in self.layers:
                 layer.to_crs(crs, inplace=True)
-            
+
             self.crs = crs
             self._transformer = pyproj.Transformer.from_crs(
                 crs_from=self.crs, crs_to="epsg:4326", always_xy=True
             )
         else:
-            geospace = GeoSpace(
-                crs=crs, warn_crs_conversion=self.warn_crs_conversion
-            )
+            geospace = GeoSpace(crs=crs, warn_crs_conversion=self.warn_crs_conversion)
             for agent in self.agents:
                 geospace.add_agents(agent.to_crs(crs, inplace=False))
             for layer in self.layers:

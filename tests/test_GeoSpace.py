@@ -273,10 +273,11 @@ class TestGeoSpace(unittest.TestCase):
             self.geo_space.get_neighbors(self.polygon_agent)[0].unique_id,
             self.touching_agent.unique_id,
         )
+
     def test_to_crs_not_inplace(self):
         model = mesa.Model()
         space = mg.GeoSpace(crs="epsg:4326")
-        
+
         agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
         space.add_agents([agent])
 
@@ -292,7 +293,7 @@ class TestGeoSpace(unittest.TestCase):
     def test_to_crs_inplace(self):
         model = mesa.Model()
         space = mg.GeoSpace(crs="epsg:4326")
-        
+
         agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
         space.add_agents([agent])
 
