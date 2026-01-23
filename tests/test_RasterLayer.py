@@ -39,7 +39,7 @@ class TestRasterLayer(unittest.TestCase):
           [3, 4],
           [5, 6]]]
         """
-        generated_attr_name = list(self.raster_layer.attributes)[0]
+        generated_attr_name = next(iter(self.raster_layer.attributes))
         self.assertEqual(getattr(self.raster_layer.cells[0][1], generated_attr_name), 3)
         self.assertEqual(self.raster_layer.attributes, {generated_attr_name})
 
