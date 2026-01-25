@@ -98,6 +98,9 @@ add_module_names = False
 # Sort members by the order in the source files instead of alphabetically
 autodoc_member_order = "bysource"
 
+# Preserve the default values of function/method parameters
+autodoc_preserve_defaults = True
+
 # Show both the class-level docstring and the constructor docstring
 autoclass_content = "both"
 
