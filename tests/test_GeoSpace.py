@@ -276,28 +276,34 @@ class TestGeoSpace(unittest.TestCase):
 
     def test_to_crs_not_inplace(self):
         model = mesa.Model()
-        space = mg.GeoSpace(crs="epsg:4326")
+        space = mg.GeoSpace(crs="EPSG:3395")
 
-        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
+        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="EPSG:3395")
         space.add_agents([agent])
 
-        new_space = space.to_crs("epsg:3857", inplace=False)
+        new_space = space.to_crs("EPSG:3857", inplace=False)
 
-        self.assertEqual(new_space.crs.to_string(), "EPSG:3857")
-        self.assertEqual(space.crs.to_string(), "EPSG:4326")
+        self.assertEqual(space.crs.to_epsg(), 3395)
+        self.assertEqual(space.transformer.source_crs.to_epsg(), space.crs.to_epsg())
+        self.assertEqual(new_space.crs.to_epsg(), 3857)
+        self.assertEqual(
+            new_space.transformer.source_crs.to_epsg(), new_space.crs.to_epsg()
+        )
 
+        self.assertEqual(space.agents[0].crs.to_epsg(), 3395)
         new_agent = new_space.agents[0]
         self.assertIsNot(new_agent, agent)
-        self.assertEqual(new_agent.crs.to_string(), "EPSG:3857")
+        self.assertEqual(new_agent.crs.to_epsg(), 3857)
 
     def test_to_crs_inplace(self):
         model = mesa.Model()
-        space = mg.GeoSpace(crs="epsg:4326")
+        space = mg.GeoSpace(crs="EPSG:3395")
 
-        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="epsg:4326")
+        agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="EPSG:3395")
         space.add_agents([agent])
 
-        space.to_crs("epsg:3857", inplace=True)
+        space.to_crs("EPSG:3857", inplace=True)
 
-        self.assertEqual(space.crs.to_string(), "EPSG:3857")
-        self.assertEqual(space.agents[0].crs.to_string(), "EPSG:3857")
+        self.assertEqual(space.crs.to_epsg(), 3857)
+        self.assertEqual(space.agents[0].crs.to_epsg(), 3857)
+        self.assertEqual(space.transformer.source_crs.to_epsg(), space.crs.to_epsg())

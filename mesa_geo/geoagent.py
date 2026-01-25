@@ -49,12 +49,13 @@ class GeoAgent(Agent, GeoBase):
 
         agent = self if inplace else copy.copy(self)
 
-        if not agent.crs.is_exact_same(crs):
+        target_crs = pyproj.CRS.from_user_input(crs)
+        if not agent.crs.is_exact_same(target_crs):
             transformer = pyproj.Transformer.from_crs(
-                crs_from=agent.crs, crs_to=crs, always_xy=True
+                crs_from=agent.crs, crs_to=target_crs, always_xy=True
             )
             agent.geometry = agent.get_transformed_geometry(transformer)
-            agent.crs = crs
+            agent.crs = target_crs
 
         if not inplace:
             return agent
