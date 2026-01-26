@@ -128,6 +128,7 @@ def make_geospace_component(
             ],
         )
     """
+
     def MakeSpaceMatplotlib(model):
         return GeoSpaceLeaflet(model, agent_portrayal, view, tiles, **kwargs)
 
