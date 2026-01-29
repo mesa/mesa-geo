@@ -17,7 +17,7 @@ import rasterio as rio
 from affine import Affine
 from mesa import Model
 from mesa.agent import Agent
-from mesa.space import Coordinate, accept_tuple_argument
+from mesa.space import Coordinate, FloatCoordinate, accept_tuple_argument
 from rasterio.warp import (
     Resampling,
     calculate_default_transform,
@@ -162,84 +162,104 @@ class Cell(Agent):
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
     """
 
-    xy: Coordinate | None
-    grid_pos: Coordinate | None
-    rowcol: Coordinate | None
+    _grid_pos: Coordinate | None
+    _rowcol: Coordinate | None
+    _xy: FloatCoordinate | None
 
     def __init__(
         self,
         model,
         pos=None,
         indices=None,
-        xy=None,
+        *,
         grid_pos=None,
         rowcol=None,
+        xy=None,
     ):
         """
         Initialize a cell.
 
-        :param pos: (Deprecated) Position of the cell in (x, y) format.
-            Origin is at lower left corner of the grid. Use grid_pos instead.
-        :param indices: (Deprecated) Indices of the cell in (row, col) format.
-            Origin is at upper left corner of the grid. Use rowcol instead.
-        :param xy: Real-world coordinates (x, y) of the cell center.
-        :param grid_pos: Position of the cell in (x, y) format.
-            Origin is at lower left corner of the grid.
+        :param pos: Position of the cell in (grid_x, grid_y) format.
+            Origin is at lower left corner of the grid
+        :param indices: Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid
+        :param grid_pos: Grid position of the cell in (grid_x, grid_y) format.
+            Origin is at lower left corner of the grid
         :param rowcol: Indices of the cell in (row, col) format.
-            Origin is at upper left corner of the grid.
+            Origin is at upper left corner of the grid
+        :param xy: Cell center coordinates in the CRS.
         """
 
         super().__init__(model)
-
-        # Handle grid_pos vs pos
-        if grid_pos is not None:
-            self.grid_pos = grid_pos
-        else:
-            self.grid_pos = pos
-
-        # Handle rowcol vs indices
-        if rowcol is not None:
-            self.rowcol = rowcol
-        else:
-            self.rowcol = indices
-
-        self.xy = xy
+        self._grid_pos = pos if grid_pos is None else grid_pos
+        self._rowcol = indices if rowcol is None else rowcol
+        self._xy = xy
 
     @property
-    def pos(self):
+    def pos(self) -> Coordinate | None:
         warnings.warn(
-            "cell.pos is deprecated, use cell.grid_pos instead.",
-            FutureWarning,
+            "Cell.pos is deprecated and will be removed in a future release. "
+            "Use Cell.grid_pos instead.",
+            DeprecationWarning,
             stacklevel=2,
         )
-        return self.grid_pos
+        return self._grid_pos
 
     @pos.setter
-    def pos(self, value):
+    def pos(self, pos: Coordinate | None) -> None:
         warnings.warn(
-            "cell.pos is deprecated, use cell.grid_pos instead.",
-            FutureWarning,
+            "Cell.pos is deprecated and will be removed in a future release. "
+            "Use Cell.grid_pos instead.",
+            DeprecationWarning,
             stacklevel=2,
         )
-        self.grid_pos = value
+        # for backward compatibility, set the grid_pos to the pos
+        # in the future, this will be removed
+        # and raise an AttributeError, because pos is read-only
+        self._grid_pos = pos
 
     @property
-    def indices(self):
+    def indices(self) -> Coordinate | None:
         warnings.warn(
-            "cell.indices is deprecated, use cell.rowcol instead.",
-            FutureWarning,
+            "Cell.indices is deprecated and will be removed in a future release. "
+            "Use Cell.rowcol instead.",
+            DeprecationWarning,
             stacklevel=2,
         )
-        return self.rowcol
+        return self._rowcol
 
     @indices.setter
-    def indices(self, value):
+    def indices(self, indices: Coordinate | None) -> None:
         warnings.warn(
-            "cell.indices is deprecated, use cell.rowcol instead.",
-            FutureWarning,
+            "Cell.indices is deprecated and will be removed in a future release. "
+            "Use Cell.rowcol instead.",
+            DeprecationWarning,
             stacklevel=2,
         )
-        self.rowcol = value
+        # for backward compatibility, set the rowcol to the indices
+        # in the future, this will be removed
+        # and raise an AttributeError, because indices is read-only
+        self._rowcol = indices
+
+    @property
+    def grid_pos(self) -> Coordinate | None:
+        """
+        Grid position in (x, y) with origin at lower left of the grid.
+        """
+        return self._grid_pos
+
+    @property
+    def rowcol(self) -> Coordinate | None:
+        """
+        Raster indices in (row, col) with origin at upper left of the grid.
+        """
+        return self._rowcol
+
+    @property
+    def xy(self) -> FloatCoordinate:
+        if self._xy is None:
+            raise ValueError("Cell.xy is not set.")
+        return self._xy
 
     def step(self):
         pass
@@ -291,22 +311,31 @@ class RasterLayer(RasterBase):
         self._attributes = set()
         self._neighborhood_cache = {}
 
+    def _update_transform(self) -> None:
+        super()._update_transform()
+        if getattr(self, "cells", None):
+            self._sync_cell_xy()
+
+    def _sync_cell_xy(self) -> None:
+        for column in self.cells:
+            for cell in column:
+                row, col = cell.rowcol
+                cell._xy = rio.transform.xy(self.transform, row, col, offset="center")
+
     def _initialize_cells(self, model: Model, cell_cls: type[Cell]):
         self.cells = []
-        for x in range(self.width):
+        for grid_x in range(self.width):
             col: list[cell_cls] = []
-            for y in range(self.height):
-                row_idx, col_idx = self.height - y - 1, x
-                # Calculate real-world coordinates (center of the cell)
-                rx, ry = self.transform * (col_idx + 0.5, row_idx + 0.5)
-                col.append(
-                    self.cell_cls(
-                        model,
-                        xy=(rx, ry),
-                        grid_pos=(x, y),
-                        rowcol=(row_idx, col_idx),
-                    )
+            for grid_y in range(self.height):
+                row_idx, col_idx = self.height - grid_y - 1, grid_x
+                xy = rio.transform.xy(self.transform, row_idx, col_idx, offset="center")
+                cell = self.cell_cls(
+                    model,
+                    grid_pos=(grid_x, grid_y),
+                    rowcol=(row_idx, col_idx),
+                    xy=xy,
                 )
+                col.append(cell)
             self.cells.append(col)
 
     @property
@@ -409,9 +438,13 @@ class RasterLayer(RasterBase):
         if attr_name is None:
             attr_name = f"attribute_{len(self.cell_cls.__dict__)}"
         self._attributes.add(attr_name)
-        for x in range(self.width):
-            for y in range(self.height):
-                setattr(self.cells[x][y], attr_name, data[0, self.height - y - 1, x])
+        for grid_x in range(self.width):
+            for grid_y in range(self.height):
+                setattr(
+                    self.cells[grid_x][grid_y],
+                    attr_name,
+                    data[0, self.height - grid_y - 1, grid_x],
+                )
 
     def get_raster(self, attr_name: str | None = None) -> np.ndarray:
         """
@@ -436,9 +469,11 @@ class RasterLayer(RasterBase):
             attr_names = {attr_name}
         data = np.empty((num_bands, self.height, self.width))
         for ind, name in enumerate(attr_names):
-            for x in range(self.width):
-                for y in range(self.height):
-                    data[ind, self.height - y - 1, x] = getattr(self.cells[x][y], name)
+            for grid_x in range(self.width):
+                for grid_y in range(self.height):
+                    data[ind, self.height - grid_y - 1, grid_x] = getattr(
+                        self.cells[grid_x][grid_y], name
+                    )
         return data
 
     def iter_neighborhood(
@@ -452,7 +487,8 @@ class RasterLayer(RasterBase):
         Return an iterator over cell coordinates that are in the
         neighborhood of a certain point.
 
-        :param Coordinate pos: Coordinate tuple for the neighborhood to get.
+        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
+            to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
@@ -478,7 +514,8 @@ class RasterLayer(RasterBase):
         """
         Return an iterator over neighbors to a certain point.
 
-        :param Coordinate pos: Coordinate tuple for the neighborhood to get.
+        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
+            to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
@@ -501,8 +538,8 @@ class RasterLayer(RasterBase):
         Returns an iterator of the contents of the cells
         identified in cell_list.
 
-        :param Iterable[Coordinate] cell_list: Array-like of (x, y) tuples,
-            or single tuple.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (x, y) tuples,
+            or single tuple. Origin is at lower left corner of the grid.
         :return: An iterator of the contents of the cells identified in cell_list.
         :rtype: Iterator[Cell]
         """
@@ -520,8 +557,8 @@ class RasterLayer(RasterBase):
 
         Note: this method returns a list of cells.
 
-        :param Iterable[Coordinate] cell_list: Array-like of (x, y) tuples,
-            or single tuple.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (x, y) tuples,
+            or single tuple. Origin is at lower left corner of the grid.
         :return: A list of the contents of the cells identified in cell_list.
         :rtype: List[Cell]
         """
@@ -535,6 +572,24 @@ class RasterLayer(RasterBase):
         include_center: bool = False,
         radius: int = 1,
     ) -> list[Coordinate]:
+        """
+        Return a list of cell coordinates that are in the
+        neighborhood of a certain point.
+
+        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
+            to get. Origin is at lower left corner of the grid.
+        :param bool moore: Whether to use Moore neighborhood or not. If True,
+            return Moore neighborhood (including diagonals). If False, return
+            Von Neumann neighborhood (exclude diagonals).
+        :param bool include_center: If True, return the (x, y) cell as well.
+            Otherwise, return surrounding cells only. Default is False.
+        :param int radius: Radius, in cells, of the neighborhood. Default is 1.
+        :return: A list of cell coordinates that are in the neighborhood.
+            For example with radius 1, it will return list with number of elements
+            equals at most 9 (8) if Moore, 5 (4) if Von Neumann (if not including
+            the center).
+        :rtype: List[Coordinate]
+        """
         cache_key = (pos, moore, include_center, radius)
         neighborhood = self._neighborhood_cache.get(cache_key, None)
 
@@ -590,6 +645,8 @@ class RasterLayer(RasterBase):
             ]
             layer.crs = crs
             layer._transform = transform
+            if getattr(layer, "cells", None):
+                layer._sync_cell_xy()
 
         if not inplace:
             return layer
@@ -635,6 +692,7 @@ class RasterLayer(RasterBase):
             ]
             obj = cls(width, height, dataset.crs, total_bounds, model, cell_cls)
             obj._transform = dataset.transform
+            obj._sync_cell_xy()
             obj.apply_raster(values, attr_name=attr_name)
             return obj
 

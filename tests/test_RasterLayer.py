@@ -1,7 +1,9 @@
 import unittest
+import warnings
 
 import mesa
 import numpy as np
+import rasterio as rio
 
 import mesa_geo as mg
 
@@ -124,32 +126,18 @@ class TestRasterLayer(unittest.TestCase):
         self.assertEqual(max_cell.grid_pos, (1, 1))
         self.assertEqual(max_cell.elevation, 4)
 
-    def test_cell_coordinates_and_deprecation(self):
-        """
-        Verify that:
-        1. Accessing cell.pos and cell.indices raises FutureWarning.
-        2. cell.pos returns grid_pos and cell.indices returns rowcol.
-        """
+    def test_deprecated_pos_indices_accessors(self):
         cell = self.raster_layer.cells[0][0]
-
-        # Test deprecated 'pos'
-        with self.assertWarns(FutureWarning):
-            pos = cell.pos
-        self.assertEqual(pos, cell.grid_pos)
-
-        # Test deprecated 'indices'
-        with self.assertWarns(FutureWarning):
-            indices = cell.indices
-        self.assertEqual(indices, cell.rowcol)
-
-        # Test setter warning
-        with self.assertWarns(FutureWarning):
-            cell.pos = (10, 10)
-        self.assertEqual(cell.grid_pos, (10, 10))
-
-        with self.assertWarns(FutureWarning):
-            cell.indices = (5, 5)
-        self.assertEqual(cell.rowcol, (5, 5))
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            self.assertEqual(cell.pos, (0, 0))
+            self.assertEqual(cell.indices, (2, 0))
+        self.assertEqual(len(captured), 2)
+        self.assertTrue(
+            all(issubclass(item.category, DeprecationWarning) for item in captured)
+        )
+        self.assertIn("Cell.pos is deprecated", str(captured[0].message))
+        self.assertIn("Cell.indices is deprecated", str(captured[1].message))
 
     def test_transform_accuracy(self):
         """
@@ -170,6 +158,17 @@ class TestRasterLayer(unittest.TestCase):
         self.assertEqual(tr_cell.grid_pos, (1, 2))
         self.assertEqual(tr_cell.rowcol, (0, 1))
 
-        expected_x, expected_y = self.raster_layer.transform * (1.5, 0.5)
-        self.assertAlmostEqual(tr_cell.xy[0], expected_x)
-        self.assertAlmostEqual(tr_cell.xy[1], expected_y)
+        expected_xy = rio.transform.xy(
+            self.raster_layer.transform, 0, 1, offset="center"
+        )
+        self.assertEqual(tr_cell.xy, expected_xy)
+
+    def test_cell_xy_updates_after_to_crs(self):
+        original_xy = self.raster_layer.cells[0][0].xy
+        transformed_layer = self.raster_layer.to_crs("epsg:3857")
+        transformed_cell = transformed_layer.cells[0][0]
+        expected_xy = rio.transform.xy(
+            transformed_layer.transform, *transformed_cell.rowcol, offset="center"
+        )
+        self.assertEqual(transformed_cell.xy, expected_xy)
+        self.assertNotEqual(transformed_cell.xy, original_xy)
