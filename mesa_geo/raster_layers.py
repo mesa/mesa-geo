@@ -100,6 +100,13 @@ class RasterBase(GeoBase):
 
     @property
     def total_bounds(self) -> np.ndarray | None:
+        """
+        Return the bounds of the raster layer in [min_x, min_y, max_x, max_y] format.
+
+        :return: Bounds of the raster layer in [min_x, min_y, max_x, max_y] format.
+        :rtype: np.ndarray | None
+        """
+
         return self._total_bounds
 
     @total_bounds.setter
@@ -160,6 +167,10 @@ class RasterBase(GeoBase):
 class Cell(Agent):
     """
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
+
+    Deprecated:
+        `Cell.pos` and `Cell.indices` are deprecated. Use `Cell.grid_pos` and
+        `Cell.rowcol` instead.
     """
 
     _grid_pos: Coordinate | None
@@ -179,10 +190,10 @@ class Cell(Agent):
         """
         Initialize a cell.
 
-        :param pos: Position of the cell in (grid_x, grid_y) format.
-            Origin is at lower left corner of the grid
-        :param indices: Indices of the cell in (row, col) format.
-            Origin is at upper left corner of the grid
+        :param pos: (Deprecated) Position of the cell in (grid_x, grid_y) format.
+            Origin is at lower left corner of the grid. Use grid_pos instead.
+        :param indices: (Deprecated) Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid. Use rowcol instead.
         :param grid_pos: Grid position of the cell in (grid_x, grid_y) format.
             Origin is at lower left corner of the grid
         :param rowcol: Indices of the cell in (row, col) format.
@@ -197,6 +208,9 @@ class Cell(Agent):
 
     @property
     def pos(self) -> Coordinate | None:
+        """
+        Deprecated alias of `grid_pos`.
+        """
         warnings.warn(
             "Cell.pos is deprecated and will be removed in a future release. "
             "Use Cell.grid_pos instead.",
@@ -207,6 +221,9 @@ class Cell(Agent):
 
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
+        """
+        Deprecated setter for `grid_pos`.
+        """
         warnings.warn(
             "Cell.pos is deprecated and will be removed in a future release. "
             "Use Cell.grid_pos instead.",
@@ -220,6 +237,9 @@ class Cell(Agent):
 
     @property
     def indices(self) -> Coordinate | None:
+        """
+        Deprecated alias of `rowcol`.
+        """
         warnings.warn(
             "Cell.indices is deprecated and will be removed in a future release. "
             "Use Cell.rowcol instead.",
@@ -230,6 +250,9 @@ class Cell(Agent):
 
     @indices.setter
     def indices(self, indices: Coordinate | None) -> None:
+        """
+        Deprecated setter for `rowcol`.
+        """
         warnings.warn(
             "Cell.indices is deprecated and will be removed in a future release. "
             "Use Cell.rowcol instead.",
@@ -244,21 +267,22 @@ class Cell(Agent):
     @property
     def grid_pos(self) -> Coordinate | None:
         """
-        Grid position in (x, y) with origin at lower left of the grid.
+        Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
         """
         return self._grid_pos
 
     @property
     def rowcol(self) -> Coordinate | None:
         """
-        Raster indices in (row, col) with origin at upper left of the grid.
+        Raster indices in (row, col) format with origin at upper left of the grid.
         """
         return self._rowcol
 
     @property
     def xy(self) -> FloatCoordinate:
-        if self._xy is None:
-            raise ValueError("Cell.xy is not set.")
+        """
+        Cell center coordinates in the CRS.
+        """
         return self._xy
 
     def step(self):
@@ -487,13 +511,13 @@ class RasterLayer(RasterBase):
         Return an iterator over cell coordinates that are in the
         neighborhood of a certain point.
 
-        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
-            to get. Origin is at lower left corner of the grid.
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
-        :param bool include_center: If True, return the (x, y) cell as well.
-            Otherwise, return surrounding cells only. Default is False.
+        :param bool include_center: If True, return the (grid_x, grid_y) cell as
+            well. Otherwise, return surrounding cells only. Default is False.
         :param int radius: Radius, in cells, of the neighborhood. Default is 1.
         :return: An iterator over cell coordinates that are in the neighborhood.
             For example with radius 1, it will return list with number of elements
@@ -514,13 +538,13 @@ class RasterLayer(RasterBase):
         """
         Return an iterator over neighbors to a certain point.
 
-        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
-            to get. Origin is at lower left corner of the grid.
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
-        :param bool include_center: If True, return the (x, y) cell as well.
-            Otherwise, return surrounding cells only. Default is False.
+        :param bool include_center: If True, return the (grid_x, grid_y) cell
+            as well. Otherwise, return surrounding cells only. Default is False.
         :param int radius: Radius, in cells, of the neighborhood. Default is 1.
         :return: An iterator of cells that are in the neighborhood; at most 9 (8)
             if Moore, 5 (4) if Von Neumann (if not including the center).
@@ -538,8 +562,8 @@ class RasterLayer(RasterBase):
         Returns an iterator of the contents of the cells
         identified in cell_list.
 
-        :param Iterable[Coordinate] cell_list: Array-like of grid (x, y) tuples,
-            or single tuple. Origin is at lower left corner of the grid.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (grid_x, grid_y) tuples,
+            or single tuple (grid_x, grid_y). Origin is at lower left corner of the grid.
         :return: An iterator of the contents of the cells identified in cell_list.
         :rtype: Iterator[Cell]
         """
@@ -557,8 +581,8 @@ class RasterLayer(RasterBase):
 
         Note: this method returns a list of cells.
 
-        :param Iterable[Coordinate] cell_list: Array-like of grid (x, y) tuples,
-            or single tuple. Origin is at lower left corner of the grid.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (grid_x, grid_y) tuples,
+            or single tuple (grid_x, grid_y). Origin is at lower left corner of the grid.
         :return: A list of the contents of the cells identified in cell_list.
         :rtype: List[Cell]
         """
@@ -576,13 +600,13 @@ class RasterLayer(RasterBase):
         Return a list of cell coordinates that are in the
         neighborhood of a certain point.
 
-        :param Coordinate pos: Grid coordinate tuple (x, y) for the neighborhood
-            to get. Origin is at lower left corner of the grid.
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
-        :param bool include_center: If True, return the (x, y) cell as well.
-            Otherwise, return surrounding cells only. Default is False.
+        :param bool include_center: If True, return the (grid_x, grid_y) cell as
+            well. Otherwise, return surrounding cells only. Default is False.
         :param int radius: Radius, in cells, of the neighborhood. Default is 1.
         :return: A list of cell coordinates that are in the neighborhood.
             For example with radius 1, it will return list with number of elements
@@ -627,6 +651,16 @@ class RasterLayer(RasterBase):
         return [self.cells[idx[0]][idx[1]] for idx in neighboring_cell_idx]
 
     def to_crs(self, crs, inplace=False) -> RasterLayer | None:
+        """
+        Transform the raster layer to a new coordinate reference system.
+
+        :param crs: The coordinate reference system to transform to.
+        :param inplace: Whether to transform the raster layer in place or
+            return a new raster layer. Defaults to False.
+        :return: The transformed raster layer if not inplace.
+        :rtype: RasterLayer | None
+        """
+
         super()._to_crs_check(crs)
         layer = self if inplace else copy.copy(self)
 
@@ -769,6 +803,15 @@ class ImageLayer(RasterBase):
         self._update_transform()
 
     def to_crs(self, crs, inplace=False) -> ImageLayer | None:
+        """
+        Transform the image layer to a new coordinate reference system.
+
+        :param crs: The coordinate reference system to transform to.
+        :param inplace: Whether to transform the image layer in place or
+            return a new image layer. Defaults to False.
+        :return: The transformed image layer if not inplace.
+        :rtype: ImageLayer | None
+        """
         super()._to_crs_check(crs)
         layer = self if inplace else copy.copy(self)
 
