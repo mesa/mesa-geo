@@ -89,7 +89,7 @@ class TestRasterLayer(unittest.TestCase):
             self.raster_layer.get_neighboring_cells(pos=(0, 2), moore=True),
             key=lambda cell: cell.elevation,
         )
-        self.assertEqual(min_cell.grid_pos, (1, 2))
+        self.assertEqual(min_cell.pos, (1, 2))
         self.assertEqual(min_cell.elevation, 2)
 
         min_cell = min(
@@ -98,7 +98,7 @@ class TestRasterLayer(unittest.TestCase):
             ),
             key=lambda cell: cell.elevation,
         )
-        self.assertEqual(min_cell.grid_pos, (0, 2))
+        self.assertEqual(min_cell.pos, (0, 2))
         self.assertEqual(min_cell.elevation, 1)
 
         self.raster_layer.apply_raster(
@@ -110,7 +110,7 @@ class TestRasterLayer(unittest.TestCase):
             ),
             key=lambda cell: cell.elevation + cell.water_level,
         )
-        self.assertEqual(min_cell.grid_pos, (0, 2))
+        self.assertEqual(min_cell.pos, (0, 2))
         self.assertEqual(min_cell.elevation, 1)
         self.assertEqual(min_cell.water_level, 1)
 
@@ -123,21 +123,19 @@ class TestRasterLayer(unittest.TestCase):
             self.raster_layer.get_neighboring_cells(pos=(0, 2), moore=True),
             key=lambda cell: cell.elevation,
         )
-        self.assertEqual(max_cell.grid_pos, (1, 1))
+        self.assertEqual(max_cell.pos, (1, 1))
         self.assertEqual(max_cell.elevation, 4)
 
     def test_deprecated_pos_indices_accessors(self):
         cell = self.raster_layer.cells[0][0]
         with warnings.catch_warnings(record=True) as captured:
             warnings.simplefilter("always")
-            self.assertEqual(cell.pos, (0, 0))
             self.assertEqual(cell.indices, (2, 0))
-        self.assertEqual(len(captured), 2)
+        self.assertEqual(len(captured), 1)
         self.assertTrue(
             all(issubclass(item.category, DeprecationWarning) for item in captured)
         )
-        self.assertIn("Cell.pos is deprecated", str(captured[0].message))
-        self.assertIn("Cell.indices is deprecated", str(captured[1].message))
+        self.assertIn("Cell.indices is deprecated", str(captured[0].message))
 
     def test_transform_accuracy(self):
         """
@@ -145,7 +143,7 @@ class TestRasterLayer(unittest.TestCase):
         """
         # Bottom-Left (grid=0,0) -> Array Row=2, Col=0
         bl_cell = self.raster_layer.cells[0][0]
-        self.assertEqual(bl_cell.grid_pos, (0, 0))
+        self.assertEqual(bl_cell.pos, (0, 0))
         self.assertEqual(bl_cell.rowcol, (2, 0))
 
         # Transform logic: x_coord, y_coord = transform * (col + 0.5, row + 0.5)
@@ -155,7 +153,7 @@ class TestRasterLayer(unittest.TestCase):
 
         # Top-Right (grid=1,2) -> Array Row=0, Col=1
         tr_cell = self.raster_layer.cells[1][2]
-        self.assertEqual(tr_cell.grid_pos, (1, 2))
+        self.assertEqual(tr_cell.pos, (1, 2))
         self.assertEqual(tr_cell.rowcol, (0, 1))
 
         expected_xy = rio.transform.xy(
@@ -171,4 +169,5 @@ class TestRasterLayer(unittest.TestCase):
             transformed_layer.transform, *transformed_cell.rowcol, offset="center"
         )
         self.assertEqual(transformed_cell.xy, expected_xy)
+        self.assertEqual(self.raster_layer.cells[0][0].xy, original_xy)
         self.assertNotEqual(transformed_cell.xy, original_xy)

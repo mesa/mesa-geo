@@ -169,11 +169,10 @@ class Cell(Agent):
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
 
     Deprecated:
-        `Cell.pos` and `Cell.indices` are deprecated. Use `Cell.grid_pos` and
-        `Cell.rowcol` instead.
+        `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
     """
 
-    _grid_pos: Coordinate | None
+    _pos: Coordinate | None
     _rowcol: Coordinate | None
     _xy: FloatCoordinate | None
 
@@ -183,57 +182,47 @@ class Cell(Agent):
         pos=None,
         indices=None,
         *,
-        grid_pos=None,
         rowcol=None,
         xy=None,
     ):
         """
         Initialize a cell.
 
-        :param pos: (Deprecated) Position of the cell in (grid_x, grid_y) format.
-            Origin is at lower left corner of the grid. Use grid_pos instead.
+        :param pos: Grid position of the cell in (grid_x, grid_y) format.
+            Origin is at lower left corner of the grid
         :param indices: (Deprecated) Indices of the cell in (row, col) format.
             Origin is at upper left corner of the grid. Use rowcol instead.
-        :param grid_pos: Grid position of the cell in (grid_x, grid_y) format.
-            Origin is at lower left corner of the grid
         :param rowcol: Indices of the cell in (row, col) format.
             Origin is at upper left corner of the grid
         :param xy: Cell center coordinates in the CRS.
         """
 
         super().__init__(model)
-        self._grid_pos = pos if grid_pos is None else grid_pos
+        self._pos = pos
         self._rowcol = indices if rowcol is None else rowcol
         self._xy = xy
 
     @property
     def pos(self) -> Coordinate | None:
         """
-        Deprecated alias of `grid_pos`.
+        Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
         """
-        warnings.warn(
-            "Cell.pos is deprecated and will be removed in a future release. "
-            "Use Cell.grid_pos instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._grid_pos
+        return self._pos
 
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
         """
-        Deprecated setter for `grid_pos`.
+        Deprecated setter for `pos`.
         """
         warnings.warn(
-            "Cell.pos is deprecated and will be removed in a future release. "
-            "Use Cell.grid_pos instead.",
+            "Cell.pos setter is deprecated and will be read-only in a future release.",
             DeprecationWarning,
             stacklevel=2,
         )
-        # for backward compatibility, set the grid_pos to the pos
-        # in the future, this will be removed
-        # and raise an AttributeError, because pos is read-only
-        self._grid_pos = pos
+        # set the pos for backward compatibility
+        # in the future, this will be removed and raise an AttributeError,
+        # because pos is read-only
+        self._pos = pos
 
     @property
     def indices(self) -> Coordinate | None:
@@ -265,13 +254,6 @@ class Cell(Agent):
         self._rowcol = indices
 
     @property
-    def grid_pos(self) -> Coordinate | None:
-        """
-        Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
-        """
-        return self._grid_pos
-
-    @property
     def rowcol(self) -> Coordinate | None:
         """
         Raster indices in (row, col) format with origin at upper left of the grid.
@@ -279,7 +261,7 @@ class Cell(Agent):
         return self._rowcol
 
     @property
-    def xy(self) -> FloatCoordinate:
+    def xy(self) -> FloatCoordinate | None:
         """
         Cell center coordinates in the CRS.
         """
@@ -355,7 +337,7 @@ class RasterLayer(RasterBase):
                 xy = rio.transform.xy(self.transform, row_idx, col_idx, offset="center")
                 cell = self.cell_cls(
                     model,
-                    grid_pos=(grid_x, grid_y),
+                    pos=(grid_x, grid_y),
                     rowcol=(row_idx, col_idx),
                     xy=xy,
                 )
@@ -662,7 +644,7 @@ class RasterLayer(RasterBase):
         """
 
         super()._to_crs_check(crs)
-        layer = self if inplace else copy.copy(self)
+        layer = self if inplace else copy.deepcopy(self)
 
         src_crs = rio.crs.CRS.from_user_input(layer.crs)
         dst_crs = rio.crs.CRS.from_user_input(crs)
