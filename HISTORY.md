@@ -1,6 +1,25 @@
 Release History
 ---------------
 
+# 0.9.3 (2026-02-17)
+
+## What's Changed
+### 🛠 Enhancements made
+* Add Cell.xy for RasterLayer cell coordinates and clarify pos/indices semantics by @codebreaker32 in https://github.com/mesa/mesa-geo/pull/299
+* handle list of attr_name in apply/get raster data by @wang-boyu in https://github.com/mesa/mesa-geo/pull/303
+### 🐛 Bugs fixed
+* Fix GeoSpace.to_crs not updating inplace and initializing incorrect CRS by @Tejasv-Singh in https://github.com/mesa/mesa-geo/pull/300
+### 📜 Documentation improvements
+* unpin mesa version and fix geospace visualization docstring by @wang-boyu in https://github.com/mesa/mesa-geo/pull/301
+### 🔧 Maintenance
+* make raster layer backward compatible by @wang-boyu in https://github.com/mesa/mesa-geo/pull/305
+
+## New Contributors
+* @Tejasv-Singh made their first contribution in https://github.com/mesa/mesa-geo/pull/300
+* @codebreaker32 made their first contribution in https://github.com/mesa/mesa-geo/pull/299
+
+**Full Changelog**: https://github.com/mesa/mesa-geo/compare/v0.9.2...v0.9.3
+
 # 0.9.2 (2026-01-05)
 
 ## What's Changed
