@@ -215,14 +215,17 @@ class Cell(Agent):
         """
         Deprecated setter for `pos`.
         """
-        warnings.warn(
-            "Cell.pos setter is deprecated and will be read-only in a future release.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        # mesa Agent set pos to None by default
+        # comment out the warning for now
+        # 
+        # warnings.warn(
+        #     "Cell.pos setter is deprecated and will be read-only in a future release.",
+        #     DeprecationWarning,
+        #     stacklevel=2,
+        # )
+
         # set the pos for backward compatibility
-        # in the future, this will be removed and raise an AttributeError,
-        # because pos is read-only
+        # in the future, this will be removed because pos is read-only
         self._pos = pos
 
     @property
@@ -349,11 +352,12 @@ class RasterLayer(RasterBase):
                     pos=(grid_x, grid_y),
                     indices=(row_idx, col_idx),
                 )
-                # Legacy constructor path does not accept xy.
+                # Legacy constructor path does not accept xy; set it manually.
                 cell._xy = xy
                 return cell
         else:
-
+            # New constructor path: __init__(self, model, pos=None, rowcol=None, xy=None, ...)
+            # or: __init__(self, model, **kwargs)
             def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
                 return self.cell_cls(
                     model,
