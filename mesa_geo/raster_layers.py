@@ -217,7 +217,7 @@ class Cell(Agent):
         """
         # mesa Agent set pos to None by default
         # comment out the warning for now
-        # 
+        #
         # warnings.warn(
         #     "Cell.pos setter is deprecated and will be read-only in a future release.",
         #     DeprecationWarning,
