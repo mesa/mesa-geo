@@ -216,13 +216,13 @@ class Cell(Agent):
         Deprecated setter for `pos`.
         """
         # mesa Agent set pos to None by default
-        # comment out the warning for now
-        #
-        # warnings.warn(
-        #     "Cell.pos setter is deprecated and will be read-only in a future release.",
-        #     DeprecationWarning,
-        #     stacklevel=2,
-        # )
+        # avoid raising a warning when pos is set to None by the Agent constructor
+        if pos is not None:
+            warnings.warn(
+                "Cell.pos setter is deprecated and will be read-only in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # set the pos for backward compatibility
         # in the future, this will be removed because pos is read-only
@@ -317,7 +317,7 @@ class RasterLayer(RasterBase):
         super().__init__(width, height, crs, total_bounds)
         self.model = model
         self.cell_cls = cell_cls
-        self._initialize_cells(model, cell_cls)
+        self._initialize_cells()
         self._attributes = set()
         self._neighborhood_cache = {}
 
@@ -332,7 +332,7 @@ class RasterLayer(RasterBase):
                 row, col = cell.rowcol
                 cell._xy = rio.transform.xy(self.transform, row, col, offset="center")
 
-    def _initialize_cells(self, model: Model, cell_cls: type[Cell]) -> None:
+    def _initialize_cells(self) -> None:
         try:
             init_params = inspect.signature(self.cell_cls.__init__).parameters
         except (TypeError, ValueError):
@@ -348,7 +348,7 @@ class RasterLayer(RasterBase):
                 # Backward-compatible path for legacy signature:
                 # __init__(self, model, pos=None, indices=None, ...)
                 cell = self.cell_cls(
-                    model,
+                    self.model,
                     pos=(grid_x, grid_y),
                     indices=(row_idx, col_idx),
                 )
@@ -360,7 +360,7 @@ class RasterLayer(RasterBase):
             # or: __init__(self, model, **kwargs)
             def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
                 return self.cell_cls(
-                    model,
+                    self.model,
                     pos=(grid_x, grid_y),
                     rowcol=(row_idx, col_idx),
                     xy=xy,
@@ -368,7 +368,7 @@ class RasterLayer(RasterBase):
 
         self.cells = []
         for grid_x in range(self.width):
-            col: list[cell_cls] = []
+            col: list[Cell] = []
             for grid_y in range(self.height):
                 row_idx, col_idx = self.height - grid_y - 1, grid_x
                 xy = rio.transform.xy(self.transform, row_idx, col_idx, offset="center")
