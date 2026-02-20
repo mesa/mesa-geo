@@ -308,6 +308,18 @@ class TestRasterLayer(unittest.TestCase):
         self.assertEqual(max_cell.pos, (1, 1))
         self.assertEqual(max_cell.elevation, 4)
 
+    def test_get_neighborhood_von_neumann(self):
+        neighborhood = self.raster_layer.get_neighborhood(
+            pos=(1, 1), moore=False, include_center=False, radius=1
+        )
+        self.assertEqual(neighborhood, [(0, 1), (1, 0), (1, 2)])
+
+    def test_get_neighborhood_von_neumann_with_center(self):
+        neighborhood = self.raster_layer.get_neighborhood(
+            pos=(1, 1), moore=False, include_center=True, radius=1
+        )
+        self.assertEqual(neighborhood, [(0, 1), (1, 0), (1, 1), (1, 2)])
+
     def test_deprecated_pos_indices_accessors(self):
         cell = self.raster_layer.cells[0][0]
         with warnings.catch_warnings(record=True) as captured:
