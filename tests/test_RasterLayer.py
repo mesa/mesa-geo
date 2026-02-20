@@ -39,12 +39,13 @@ class TestRasterLayer(unittest.TestCase):
           [3, 4],
           [5, 6]]]
         """
-        self.assertEqual(self.raster_layer.cells[0][1].attribute_5, 3)
-        self.assertEqual(self.raster_layer.attributes, {"attribute_5"})
+        generated_attr = next(iter(self.raster_layer.attributes))
+        self.assertEqual(getattr(self.raster_layer.cells[0][1], generated_attr), 3)
+        self.assertEqual(self.raster_layer.attributes, {generated_attr})
 
         self.raster_layer.apply_raster(raster_data, attr_name="elevation")
         self.assertEqual(self.raster_layer.cells[0][1].elevation, 3)
-        self.assertEqual(self.raster_layer.attributes, {"attribute_5", "elevation"})
+        self.assertEqual(self.raster_layer.attributes, {generated_attr, "elevation"})
 
         with self.assertRaises(ValueError):
             self.raster_layer.apply_raster(np.empty((1, 100, 100)))

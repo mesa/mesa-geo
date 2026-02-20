@@ -9,14 +9,14 @@ import copy
 import itertools
 import math
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from typing import Any, cast, overload
+from typing import Any, TypeVar, cast, overload
 
 import numpy as np
 import rasterio as rio
 from affine import Affine
 from mesa import Model
-from mesa.agent import Agent
-from mesa.space import Coordinate, accept_tuple_argument
+from mesa.discrete_space import Cell as MesaDiscreteCell
+from mesa.discrete_space import OrthogonalMooreGrid
 from rasterio.warp import (
     Resampling,
     calculate_default_transform,
@@ -25,6 +25,24 @@ from rasterio.warp import (
 )
 
 from mesa_geo.geo_base import GeoBase
+
+Coordinate = tuple[int, int]
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def accept_tuple_argument(wrapped_function: F) -> F:
+    """Allow passing a single coordinate tuple to list-based cell APIs."""
+
+    def wrapper(grid_instance, positions, *args, **kwargs) -> Any:
+        if (
+            isinstance(positions, tuple)
+            and len(positions) == 2
+            and not isinstance(positions[0], tuple)
+        ):
+            positions = [positions]
+        return wrapped_function(grid_instance, positions, *args, **kwargs)
+
+    return cast(F, wrapper)
 
 
 class RasterBase(GeoBase):
@@ -156,27 +174,33 @@ class RasterBase(GeoBase):
         return x < 0 or x >= self.width or y < 0 or y >= self.height
 
 
-class Cell(Agent):
+class Cell(MesaDiscreteCell):
     """
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
     """
 
+    model: Model | None
     pos: Coordinate | None
     indices: Coordinate | None
 
-    def __init__(self, model, pos=None, indices=None):
+    def __init__(self, coordinate, position=None, capacity=None, random=None):
         """
         Initialize a cell.
 
-        :param pos: Position of the cell in (x, y) format.
+        :param coordinate: Position of the cell in (x, y) format.
             Origin is at lower left corner of the grid
-        :param indices: Indices of the cell in (row, col) format.
-            Origin is at upper left corner of the grid
         """
 
-        super().__init__(model)
-        self.pos = pos
-        self.indices = indices
+        super().__init__(
+            coordinate=coordinate,
+            position=position,
+            capacity=capacity,
+            random=random,
+        )
+        x, y = coordinate
+        self.model = None
+        self.pos = (x, y)
+        self.indices = None
 
     def step(self):
         pass
@@ -184,7 +208,7 @@ class Cell(Agent):
 
 class RasterLayer(RasterBase):
     """
-    Some methods in `RasterLayer` are copied from `mesa.space.Grid`, including:
+    Some methods in `RasterLayer` are copied from Mesa's legacy grid implementation, including:
 
     __getitem__
     __iter__
@@ -197,7 +221,7 @@ class RasterLayer(RasterBase):
     iter_cell_list_contents
     get_cell_list_contents
 
-    Methods from `mesa.space.Grid` that are not copied over:
+    Methods from the legacy grid implementation that are not copied over:
 
     torus_adj
     neighbor_iter
@@ -210,13 +234,16 @@ class RasterLayer(RasterBase):
     find_empty
     exists_empty_cells
 
-    Another difference is that `mesa.space.Grid` has `self.grid: List[List[Agent | None]]`,
+    Another difference is that the legacy grid implementation has
+    `self.grid: List[List[Agent | None]]`,
     whereas it is `self.cells: List[List[Cell]]` here in `RasterLayer`.
     """
 
     cells: list[list[Cell]]
+    _grid: OrthogonalMooreGrid
     _neighborhood_cache: dict[Any, list[Coordinate]]
     _attributes: set[str]
+    _default_attribute_name: str
 
     def __init__(
         self, width, height, crs, total_bounds, model, cell_cls: type[Cell] = Cell
@@ -226,15 +253,26 @@ class RasterLayer(RasterBase):
         self.cell_cls = cell_cls
         self._initialize_cells(model, cell_cls)
         self._attributes = set()
+        self._default_attribute_name = "attribute_0"
         self._neighborhood_cache = {}
 
     def _initialize_cells(self, model: Model, cell_cls: type[Cell]):
+        self._grid = OrthogonalMooreGrid(
+            dimensions=(self.width, self.height),
+            torus=False,
+            random=model.random,
+            cell_klass=cell_cls,
+        )
         self.cells = []
         for x in range(self.width):
-            col: list[cell_cls] = []
+            col: list[Cell] = []
             for y in range(self.height):
+                cell = self._grid[(x, y)]
                 row_idx, col_idx = self.height - y - 1, x
-                col.append(self.cell_cls(model, pos=(x, y), indices=(row_idx, col_idx)))
+                cell.model = model
+                cell.pos = (x, y)
+                cell.indices = (row_idx, col_idx)
+                col.append(cell)
             self.cells.append(col)
 
     @property
@@ -335,7 +373,7 @@ class RasterLayer(RasterBase):
                 f"Expected {(1, self.height, self.width)}, received {data.shape}."
             )
         if attr_name is None:
-            attr_name = f"attribute_{len(self.cell_cls.__dict__)}"
+            attr_name = self._default_attribute_name
         self._attributes.add(attr_name)
         for x in range(self.width):
             for y in range(self.height):
@@ -467,22 +505,21 @@ class RasterLayer(RasterBase):
         neighborhood = self._neighborhood_cache.get(cache_key, None)
 
         if neighborhood is None:
-            coordinates: set[Coordinate] = set()
+            center = self._grid[pos]
+            neighborhood_cells = center.get_neighborhood(
+                radius=radius,
+                include_center=include_center,
+            ).cells
+            coordinates = [cast(Coordinate, cell.coordinate) for cell in neighborhood_cells]
 
-            x, y = pos
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    if dx == 0 and dy == 0 and not include_center:
-                        continue
-                    # Skip coordinates that are outside manhattan distance
-                    if not moore and abs(dx) + abs(dy) > radius:
-                        continue
-
-                    coord = (x + dx, y + dy)
-
-                    if self.out_of_bounds(coord):
-                        continue
-                    coordinates.add(coord)
+            if not moore:
+                x, y = pos
+                coordinates = [
+                    coord
+                    for coord in coordinates
+                    if (include_center or coord != pos)
+                    and abs(coord[0] - x) + abs(coord[1] - y) <= radius
+                ]
 
             neighborhood = sorted(coordinates)
             self._neighborhood_cache[cache_key] = neighborhood
@@ -506,7 +543,7 @@ class RasterLayer(RasterBase):
         src_crs = rio.crs.CRS.from_user_input(layer.crs)
         dst_crs = rio.crs.CRS.from_user_input(crs)
         if not layer.crs.is_exact_same(crs):
-            transform, dst_width, dst_height = calculate_default_transform(
+            transform, _, _ = calculate_default_transform(
                 src_crs,
                 dst_crs,
                 self.width,
