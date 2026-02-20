@@ -196,13 +196,37 @@ class Cell(MesaDiscreteCell):
     _rowcol: Coordinate | None
     _xy: FloatCoordinate | None
 
-    def __init__(self, coordinate, position=None, capacity=None, random=None):
+    def __init__(
+        self,
+        model: Model | None = None,
+        *args,
+        coordinate: Coordinate | None = None,
+        position=None,
+        capacity=None,
+        random=None,
+        **kwargs,
+    ):
         """
         Initialize a cell.
 
         :param coordinate: Position of the cell in (x, y) format.
             Origin is at lower left corner of the grid
         """
+
+        if args:
+            # Backward compatibility:
+            # 1) Mesa discrete-space style: Cell((x, y), capacity, random=...)
+            # 2) Legacy mesa-geo style: Cell(model, ...)
+            first = args[0]
+            if isinstance(first, tuple) and len(first) == 2 and coordinate is None:
+                coordinate = cast(Coordinate, first)
+                if len(args) > 1 and capacity is None:
+                    capacity = args[1]
+            elif model is None:
+                model = first
+
+        if coordinate is None:
+            coordinate = cast(Coordinate, kwargs.pop("coordinate", (0, 0)))
 
         super().__init__(
             coordinate=coordinate,
@@ -211,7 +235,7 @@ class Cell(MesaDiscreteCell):
             random=random,
         )
         x, y = coordinate
-        self.model = None
+        self.model = model
         self._pos = (x, y)
         self._rowcol = None
         self._xy = None
@@ -317,18 +341,57 @@ class RasterLayer(RasterBase):
             dimensions=(self.width, self.height),
             torus=False,
             random=model.random,
-            cell_klass=cell_cls,
+            cell_klass=MesaDiscreteCell,
         )
         self.cells = []
         for x in range(self.width):
             col: list[Cell] = []
             for y in range(self.height):
-                cell = self._grid[(x, y)]
-                cell.model = model
-                cell._pos = (x, y)
+                cell = self._make_cell_instance(cell_cls, model, (x, y))
                 col.append(cell)
             self.cells.append(col)
         self._sync_cell_xy()
+
+    def _make_cell_instance(
+        self, cell_cls: type[Cell], model: Model, coordinate: Coordinate
+    ) -> Cell:
+        # Support both legacy constructor style (Cell(model, **kwargs))
+        # and discrete-space style (Cell(coordinate=..., ...)).
+        candidates = [
+            lambda: cell_cls(
+                model=model,
+                coordinate=coordinate,
+                capacity=None,
+                random=model.random,
+            ),
+            lambda: cell_cls(
+                coordinate=coordinate,
+                capacity=None,
+                random=model.random,
+            ),
+            lambda: cell_cls(model=model),
+            lambda: cell_cls(model),
+            lambda: cell_cls(),
+        ]
+        last_error: Exception | None = None
+        for ctor in candidates:
+            try:
+                cell = ctor()
+                break
+            except TypeError as exc:
+                last_error = exc
+        else:
+            raise TypeError(
+                f"Unable to instantiate raster cell class {cell_cls.__name__}"
+            ) from last_error
+
+        cell = cast(Cell, cell)
+        cell.model = model
+        if hasattr(cell, "_pos"):
+            cell._pos = coordinate
+        else:
+            cell.pos = coordinate
+        return cell
 
     def _sync_cell_xy(self) -> None:
         for grid_x in range(self.width):
