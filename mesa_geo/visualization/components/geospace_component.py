@@ -34,6 +34,101 @@ def make_geospace_component(
     tiles=xyzservices.providers.OpenStreetMap.Mapnik,
     **kwargs,
 ):
+    """
+    Create a Solara component that displays a Leaflet map for a model's GeoSpace.
+
+    This function returns a factory callable that can be supplied to Mesa's
+    `SolaraViz` to embed an interactive Leaflet map showing the model's
+    :class:`~mesa_geo.geospace.GeoSpace`. The map is rendered using ipyleaflet
+    and will draw raster layers, vector layers, and agents with their portrayals,
+    using a user-provided `agent_portrayal` function.
+
+    For a raster Cell, the portrayal method should return a (r, g, b, a) tuple.
+
+    For a GeoAgent, the portrayal method should return a dictionary.
+        - For a Line or a Polygon, the available options can be found at: https://leafletjs.com/reference.html#path-option
+        - For a Point, the available options can be found at: https://leafletjs.com/reference.html#circlemarker-option
+        - In addition, the portrayal dictionary can contain a "description" key, which will be used as the popup text.
+
+    :param agent_portrayal: A method that takes a GeoAgent (or a Cell) and returns
+        a dictionary of options (or a (r, g, b, a) tuple) for Leaflet.js.
+    :param view: Initial map center as ``(latitude, longitude)``. If not provided,
+        the map is centered from ``model.space.total_bounds``.
+    :param tiles: An optional tile layer to use. Can be a :class:`RasterWebTile` or
+        a :class:`xyzservices.TileProvider`. Default is `xyzservices.providers.OpenStreetMap.Mapnik`.
+
+        If the tile provider requires registration, you can pass the API key inside
+        the `options` parameter of the :class:`RasterWebTile` constructor.
+
+        For example, to use the `Mapbox` raster tile provider, you can use:
+
+        .. code-block:: python
+
+            import mesa_geo as mg
+
+            mg.RasterWebTile(
+                url="https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.png?access_token={access_token}",
+                options={
+                    "access_token": "my-private-ACCESS_TOKEN",
+                    "attribution": '&copy; <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors <a href="https://www.mapbox.com/map-feedback/" target="_blank">Improve this map</a>',
+                },
+            )
+
+        Note that `access_token` can have different names depending on the provider,
+        e.g., `api_key` or `key`. You can check the documentation of the provider
+        for more details.
+
+        `xyzservices` provides a list of providers requiring registration as well:
+        https://xyzservices.readthedocs.io/en/stable/registration.html
+
+        For example, you may use the following code to use the `Mapbox` provider:
+
+        .. code-block:: python
+
+            import xyzservices.providers as xyz
+
+            xyz.MapBox(id="<insert map_ID here>", accessToken="my-private-ACCESS_TOKEN")
+
+    :param **kwargs: Extra keyword arguments forwarded to :class:`ipyleaflet.Map`
+        (e.g., ``zoom=``, ``scroll_wheel_zoom=``). The available options can be found
+        at: https://ipyleaflet.readthedocs.io/en/latest/api_reference/index.html#ipyleaflet.leaflet.Map
+
+    :return: A factory callable to be passed as a SolaraViz component.
+    :rtype: Callable[[mesa.Model], solara.Element]
+
+    .. warning::
+        When using this component with :class:`~mesa.visualization.SolaraViz`,
+        pass the list of components via the ``components=`` keyword argument
+        (not as a positional argument). See the SolaraViz docs:
+        https://mesa.readthedocs.io/latest/apis/visualization.html
+
+    .. rubric:: Example
+    Define a custom portrayal for agents and add a map component to SolaraViz:
+
+    .. code-block:: python
+
+        import mesa_geo as mg
+        from mesa.visualization import SolaraViz, make_plot_component
+        from mesa_geo.visualization import make_geospace_component
+
+        def agent_portrayal(agent):
+            # Return Leaflet style options or RGBA tuple
+            if isinstance(agent, mg.GeoAgent):
+                return {"radius": 4, "color": "blue"}
+            elif isinstance(agent, mg.Cell):
+                return (255, 0, 0, 1)  # Red color for raster cells
+
+        page = SolaraViz(
+            model,
+            name="Geo Model",
+            model_params=model_params,
+            components=[
+                make_geospace_component(agent_portrayal),
+                make_plot_component(["happy", "unhappy"]),
+            ],
+        )
+    """
+
     def MakeSpaceMatplotlib(model):
         return GeoSpaceLeaflet(model, agent_portrayal, view, tiles, **kwargs)
 
@@ -114,13 +209,6 @@ class MapModule:
 
         :param portrayal_method: A method that takes a GeoAgent (or a Cell) and returns
             a dictionary of options (or a (r, g, b, a) tuple) for Leaflet.js.
-        :param view: The initial view of the map. Must be set together with zoom.
-            If both view and zoom are None, the map will be centered on the total bounds
-            of the space. Default is None.
-        :param zoom: The initial zoom level of the map. Must be set together with view.
-            If both view and zoom are None, the map will be centered on the total bounds
-            of the space. Default is None.
-        :param scroll_wheel_zoom: Boolean whether not user can scroll on map with mouse wheel
         :param tiles: An optional tile layer to use. Can be a :class:`RasterWebTile` or
             a :class:`xyzservices.TileProvider`. Default is `xyzservices.providers.OpenStreetMap.Mapnik`.
 
@@ -155,9 +243,6 @@ class MapModule:
                 import xyzservices.providers as xyz
 
                 xyz.MapBox(id="<insert map_ID here>", accessToken="my-private-ACCESS_TOKEN")
-
-        :param scale_options: A dictionary of options for the map scale. Default is None
-            (no map scale). The available options can be found at: https://leafletjs.com/reference.html#control-scale-option
         """
         self.portrayal_method = portrayal_method
         self._crs = "epsg:4326"

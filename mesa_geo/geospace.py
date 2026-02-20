@@ -48,20 +48,30 @@ class GeoSpace(GeoBase):
 
     def to_crs(self, crs, inplace=False) -> GeoSpace | None:
         super()._to_crs_check(crs)
-
+        target_crs = pyproj.CRS.from_user_input(crs)
         if inplace:
+            if self.crs.is_exact_same(target_crs):
+                return None
             for agent in self.agents:
-                agent.to_crs(crs, inplace=True)
+                agent.to_crs(target_crs, inplace=True)
             for layer in self.layers:
-                layer.to_crs(crs, inplace=True)
+                layer.to_crs(target_crs, inplace=True)
+
+            self.crs = target_crs
+            self._transformer = pyproj.Transformer.from_crs(
+                crs_from=self.crs, crs_to="epsg:4326", always_xy=True
+            )
+            self._total_bounds = None
+            self._agent_layer._invalidate()
+            return None
         else:
             geospace = GeoSpace(
-                crs=self.crs.to_string(), warn_crs_conversion=self.warn_crs_conversion
+                crs=target_crs, warn_crs_conversion=self.warn_crs_conversion
             )
             for agent in self.agents:
-                geospace.add_agents(agent.to_crs(crs, inplace=False))
+                geospace.add_agents(agent.to_crs(target_crs, inplace=False))
             for layer in self.layers:
-                geospace.add_layer(layer.to_crs(crs, inplace=False))
+                geospace.add_layer(layer.to_crs(target_crs, inplace=False))
             return geospace
 
     @property
@@ -273,6 +283,15 @@ class _AgentLayer:
             max_x, max_y = np.max(bounds[:, 2:], axis=0)
             self._total_bounds = np.array([min_x, min_y, max_x, max_y])
         return self._total_bounds
+
+    def _invalidate(self):
+        """
+        Invalidate the rtree index and neighborhood graph.
+        """
+
+        self._idx = None
+        self._neighborhood = None
+        self._total_bounds = None
 
     def _get_rtree_intersections(self, geometry):
         """

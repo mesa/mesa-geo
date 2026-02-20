@@ -6,8 +6,10 @@ Raster Layers
 from __future__ import annotations
 
 import copy
+import inspect
 import itertools
 import math
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, TypeVar, cast, overload
 
@@ -117,6 +119,13 @@ class RasterBase(GeoBase):
 
     @property
     def total_bounds(self) -> np.ndarray | None:
+        """
+        Return the bounds of the raster layer in [min_x, min_y, max_x, max_y] format.
+
+        :return: Bounds of the raster layer in [min_x, min_y, max_x, max_y] format.
+        :rtype: np.ndarray | None
+        """
+
         return self._total_bounds
 
     @total_bounds.setter
@@ -177,6 +186,9 @@ class RasterBase(GeoBase):
 class Cell(MesaDiscreteCell):
     """
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
+
+    Deprecated:
+        `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
     """
 
     model: Model | None
@@ -251,7 +263,7 @@ class RasterLayer(RasterBase):
         super().__init__(width, height, crs, total_bounds)
         self.model = model
         self.cell_cls = cell_cls
-        self._initialize_cells(model, cell_cls)
+        self._initialize_cells()
         self._attributes = set()
         self._default_attribute_name = "attribute_0"
         self._neighborhood_cache = {}
@@ -357,20 +369,24 @@ class RasterLayer(RasterBase):
             for col in range(self.height):
                 yield self.cells[row][col], row, col  # cell, x, y
 
-    def apply_raster(self, data: np.ndarray, attr_name: str | None = None) -> None:
+    def apply_raster(
+        self, data: np.ndarray, attr_name: str | Sequence[str] | None = None
+    ) -> None:
         """
         Apply raster data to the cells.
 
-        :param np.ndarray data: 2D numpy array with shape (1, height, width).
-        :param str | None attr_name: Name of the attribute to be added to the cells.
-            If None, a random name will be generated. Default is None.
-        :raises ValueError: If the shape of the data is not (1, height, width).
+        :param np.ndarray data: 3D numpy array with shape (bands, height, width).
+        :param str | Sequence[str] | None attr_name: Attribute name(s) to be added to the
+            cells. For multi-band rasters, pass a list of names with length equal to
+            the number of bands, or a single base name to be suffixed per band. If None,
+            names are generated. Default is None.
+        :raises ValueError: If the shape of the data does not match the raster.
         """
 
-        if data.shape != (1, self.height, self.width):
+        if data.ndim != 3 or data.shape[1:] != (self.height, self.width):
             raise ValueError(
                 f"Data shape does not match raster shape. "
-                f"Expected {(1, self.height, self.width)}, received {data.shape}."
+                f"Expected (*, {self.height}, {self.width}), received {data.shape}."
             )
         if attr_name is None:
             attr_name = self._default_attribute_name
@@ -383,28 +399,41 @@ class RasterLayer(RasterBase):
         """
         Return the values of given attribute.
 
-        :param str | None attr_name: Name of the attribute to be returned. If None,
-            returns all attributes. Default is None.
-        :return: The values of given attribute as a 2D numpy array with shape (1, height, width).
+        :param str | Sequence[str] | None attr_name: Name(s) of attributes to be returned.
+            If None, returns all attributes. Default is None.
+        :return: The values of given attribute(s) as a numpy array with shape
+            (bands, height, width).
         :rtype: np.ndarray
         """
 
-        if attr_name is not None and attr_name not in self.attributes:
+        if isinstance(attr_name, str) and attr_name not in self.attributes:
             raise ValueError(
                 f"Attribute {attr_name} does not exist. "
                 f"Choose from {self.attributes}, or set `attr_name` to `None` to retrieve all."
             )
+        if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
+            missing = [name for name in attr_name if name not in self.attributes]
+            if missing:
+                raise ValueError(
+                    f"Attribute {missing[0]} does not exist. "
+                    f"Choose from {self.attributes}, or set `attr_name` to `None` to retrieve all."
+                )
         if attr_name is None:
             num_bands = len(self.attributes)
             attr_names = self.attributes
+        elif isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
+            num_bands = len(attr_name)
+            attr_names = list(attr_name)
         else:
             num_bands = 1
-            attr_names = {attr_name}
+            attr_names = [attr_name]
         data = np.empty((num_bands, self.height, self.width))
         for ind, name in enumerate(attr_names):
-            for x in range(self.width):
-                for y in range(self.height):
-                    data[ind, self.height - y - 1, x] = getattr(self.cells[x][y], name)
+            for grid_x in range(self.width):
+                for grid_y in range(self.height):
+                    data[ind, self.height - grid_y - 1, grid_x] = getattr(
+                        self.cells[grid_x][grid_y], name
+                    )
         return data
 
     def iter_neighborhood(
@@ -418,12 +447,13 @@ class RasterLayer(RasterBase):
         Return an iterator over cell coordinates that are in the
         neighborhood of a certain point.
 
-        :param Coordinate pos: Coordinate tuple for the neighborhood to get.
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
-        :param bool include_center: If True, return the (x, y) cell as well.
-            Otherwise, return surrounding cells only. Default is False.
+        :param bool include_center: If True, return the (grid_x, grid_y) cell as
+            well. Otherwise, return surrounding cells only. Default is False.
         :param int radius: Radius, in cells, of the neighborhood. Default is 1.
         :return: An iterator over cell coordinates that are in the neighborhood.
             For example with radius 1, it will return list with number of elements
@@ -444,12 +474,13 @@ class RasterLayer(RasterBase):
         """
         Return an iterator over neighbors to a certain point.
 
-        :param Coordinate pos: Coordinate tuple for the neighborhood to get.
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
         :param bool moore: Whether to use Moore neighborhood or not. If True,
             return Moore neighborhood (including diagonals). If False, return
             Von Neumann neighborhood (exclude diagonals).
-        :param bool include_center: If True, return the (x, y) cell as well.
-            Otherwise, return surrounding cells only. Default is False.
+        :param bool include_center: If True, return the (grid_x, grid_y) cell
+            as well. Otherwise, return surrounding cells only. Default is False.
         :param int radius: Radius, in cells, of the neighborhood. Default is 1.
         :return: An iterator of cells that are in the neighborhood; at most 9 (8)
             if Moore, 5 (4) if Von Neumann (if not including the center).
@@ -467,8 +498,8 @@ class RasterLayer(RasterBase):
         Returns an iterator of the contents of the cells
         identified in cell_list.
 
-        :param Iterable[Coordinate] cell_list: Array-like of (x, y) tuples,
-            or single tuple.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (grid_x, grid_y) tuples,
+            or single tuple (grid_x, grid_y). Origin is at lower left corner of the grid.
         :return: An iterator of the contents of the cells identified in cell_list.
         :rtype: Iterator[Cell]
         """
@@ -486,8 +517,8 @@ class RasterLayer(RasterBase):
 
         Note: this method returns a list of cells.
 
-        :param Iterable[Coordinate] cell_list: Array-like of (x, y) tuples,
-            or single tuple.
+        :param Iterable[Coordinate] cell_list: Array-like of grid (grid_x, grid_y) tuples,
+            or single tuple (grid_x, grid_y). Origin is at lower left corner of the grid.
         :return: A list of the contents of the cells identified in cell_list.
         :rtype: List[Cell]
         """
@@ -501,6 +532,24 @@ class RasterLayer(RasterBase):
         include_center: bool = False,
         radius: int = 1,
     ) -> list[Coordinate]:
+        """
+        Return a list of cell coordinates that are in the
+        neighborhood of a certain point.
+
+        :param Coordinate pos: Grid coordinate tuple (grid_x, grid_y) for the
+            neighborhood to get. Origin is at lower left corner of the grid.
+        :param bool moore: Whether to use Moore neighborhood or not. If True,
+            return Moore neighborhood (including diagonals). If False, return
+            Von Neumann neighborhood (exclude diagonals).
+        :param bool include_center: If True, return the (grid_x, grid_y) cell as
+            well. Otherwise, return surrounding cells only. Default is False.
+        :param int radius: Radius, in cells, of the neighborhood. Default is 1.
+        :return: A list of cell coordinates that are in the neighborhood.
+            For example with radius 1, it will return list with number of elements
+            equals at most 9 (8) if Moore, 5 (4) if Von Neumann (if not including
+            the center).
+        :rtype: List[Coordinate]
+        """
         cache_key = (pos, moore, include_center, radius)
         neighborhood = self._neighborhood_cache.get(cache_key, None)
 
@@ -537,8 +586,18 @@ class RasterLayer(RasterBase):
         return [self.cells[idx[0]][idx[1]] for idx in neighboring_cell_idx]
 
     def to_crs(self, crs, inplace=False) -> RasterLayer | None:
+        """
+        Transform the raster layer to a new coordinate reference system.
+
+        :param crs: The coordinate reference system to transform to.
+        :param inplace: Whether to transform the raster layer in place or
+            return a new raster layer. Defaults to False.
+        :return: The transformed raster layer if not inplace.
+        :rtype: RasterLayer | None
+        """
+
         super()._to_crs_check(crs)
-        layer = self if inplace else copy.copy(self)
+        layer = self if inplace else copy.deepcopy(self)
 
         src_crs = rio.crs.CRS.from_user_input(layer.crs)
         dst_crs = rio.crs.CRS.from_user_input(crs)
@@ -555,6 +614,8 @@ class RasterLayer(RasterBase):
             ]
             layer.crs = crs
             layer._transform = transform
+            if getattr(layer, "cells", None):
+                layer._sync_cell_xy()
 
         if not inplace:
             return layer
@@ -566,7 +627,7 @@ class RasterLayer(RasterBase):
 
         values = np.empty(shape=(4, self.height, self.width))
         for cell in self:
-            row, col = cell.indices
+            row, col = cell.rowcol
             values[:, row, col] = colormap(cell)
         return ImageLayer(values=values, crs=self.crs, total_bounds=self.total_bounds)
 
@@ -576,7 +637,7 @@ class RasterLayer(RasterBase):
         raster_file: str,
         model: Model,
         cell_cls: type[Cell] = Cell,
-        attr_name: str | None = None,
+        attr_name: str | Sequence[str] | None = None,
         rio_opener: Callable | None = None,
     ) -> RasterLayer:
         """
@@ -584,8 +645,10 @@ class RasterLayer(RasterBase):
 
         :param str raster_file: Path to the raster file.
         :param Type[Cell] cell_cls: The class of the cells in the layer.
-        :param str | None attr_name: The name of the attribute to use for the cell values.
-            If None, a random name will be generated. Default is None.
+        :param str | Sequence[str] | None attr_name: Attribute name(s) to use for the cell
+            values. For multi-band rasters, pass a list of names with length equal to
+            the number of bands, or a single base name to be suffixed per band. If None,
+            names are generated. Default is None.
         :param Callable | None rio_opener: A callable passed to Rasterio open() function.
         """
 
@@ -600,18 +663,22 @@ class RasterLayer(RasterBase):
             ]
             obj = cls(width, height, dataset.crs, total_bounds, model, cell_cls)
             obj._transform = dataset.transform
+            obj._sync_cell_xy()
             obj.apply_raster(values, attr_name=attr_name)
             return obj
 
     def to_file(
-        self, raster_file: str, attr_name: str | None = None, driver: str = "GTiff"
+        self,
+        raster_file: str,
+        attr_name: str | Sequence[str] | None = None,
+        driver: str = "GTiff",
     ) -> None:
         """
         Writes a raster layer to a file.
 
         :param str raster_file: The path to the raster file to write to.
-        :param str | None attr_name: The name of the attribute to write to the raster.
-            If None, all attributes are written. Default is None.
+        :param str | Sequence[str] | None attr_name: The name(s) of attributes to write
+            to the raster. If None, all attributes are written. Default is None.
         :param str driver: The GDAL driver to use for writing the raster file.
             Default is 'GTiff'. See GDAL docs at https://gdal.org/drivers/raster/index.html.
         """
@@ -676,6 +743,15 @@ class ImageLayer(RasterBase):
         self._update_transform()
 
     def to_crs(self, crs, inplace=False) -> ImageLayer | None:
+        """
+        Transform the image layer to a new coordinate reference system.
+
+        :param crs: The coordinate reference system to transform to.
+        :param inplace: Whether to transform the image layer in place or
+            return a new image layer. Defaults to False.
+        :return: The transformed image layer if not inplace.
+        :rtype: ImageLayer | None
+        """
         super()._to_crs_check(crs)
         layer = self if inplace else copy.copy(self)
 
