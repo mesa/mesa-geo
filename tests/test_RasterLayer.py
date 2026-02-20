@@ -319,6 +319,21 @@ class TestRasterLayer(unittest.TestCase):
         )
         self.assertIn("Cell.indices is deprecated", str(captured[0].message))
 
+    def test_cell_init_with_discrete_space_style_args(self):
+        cell = mg.Cell(None, (1, 2), 3, random=self.model.random)
+        self.assertEqual(cell.pos, (1, 2))
+        self.assertIsNone(cell.model)
+
+    def test_cell_init_with_legacy_model_positional_arg(self):
+        cell = mg.Cell(None, self.model)
+        self.assertIs(cell.model, self.model)
+        self.assertEqual(cell.pos, (0, 0))
+
+    def test_cell_init_without_coordinate_defaults_to_origin(self):
+        cell = mg.Cell(self.model)
+        self.assertEqual(cell.pos, (0, 0))
+        self.assertIs(cell.model, self.model)
+
     def test_transform_accuracy(self):
         """
         Verify that cell.xy and cell.rowcol are calculated correctly.
