@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, TypeVar, cast, overload
 
@@ -27,6 +28,7 @@ from rasterio.warp import (
 from mesa_geo.geo_base import GeoBase
 
 Coordinate = tuple[int, int]
+FloatCoordinate = tuple[float, float]
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -190,8 +192,9 @@ class Cell(MesaDiscreteCell):
     """
 
     model: Model | None
-    pos: Coordinate | None
-    indices: Coordinate | None
+    _pos: Coordinate | None
+    _rowcol: Coordinate | None
+    _xy: FloatCoordinate | None
 
     def __init__(self, coordinate, position=None, capacity=None, random=None):
         """
@@ -209,8 +212,51 @@ class Cell(MesaDiscreteCell):
         )
         x, y = coordinate
         self.model = None
-        self.pos = (x, y)
-        self.indices = None
+        self._pos = (x, y)
+        self._rowcol = None
+        self._xy = None
+
+    @property
+    def pos(self) -> Coordinate | None:
+        return self._pos
+
+    @pos.setter
+    def pos(self, pos: Coordinate | None) -> None:
+        if pos is not None:
+            warnings.warn(
+                "Cell.pos setter is deprecated and will be read-only in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        self._pos = pos
+
+    @property
+    def indices(self) -> Coordinate | None:
+        warnings.warn(
+            "Cell.indices is deprecated and will be removed in a future release. "
+            "Use Cell.rowcol instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._rowcol
+
+    @indices.setter
+    def indices(self, indices: Coordinate | None) -> None:
+        warnings.warn(
+            "Cell.indices is deprecated and will be removed in a future release. "
+            "Use Cell.rowcol instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._rowcol = indices
+
+    @property
+    def rowcol(self) -> Coordinate | None:
+        return self._rowcol
+
+    @property
+    def xy(self) -> FloatCoordinate | None:
+        return self._xy
 
     def step(self):
         pass
@@ -261,7 +307,7 @@ class RasterLayer(RasterBase):
         super().__init__(width, height, crs, total_bounds)
         self.model = model
         self.cell_cls = cell_cls
-        self._initialize_cells()
+        self._initialize_cells(model, cell_cls)
         self._attributes = set()
         self._default_attribute_name = "attribute_0"
         self._neighborhood_cache = {}
@@ -278,12 +324,23 @@ class RasterLayer(RasterBase):
             col: list[Cell] = []
             for y in range(self.height):
                 cell = self._grid[(x, y)]
-                row_idx, col_idx = self.height - y - 1, x
                 cell.model = model
-                cell.pos = (x, y)
-                cell.indices = (row_idx, col_idx)
+                cell._pos = (x, y)
                 col.append(cell)
             self.cells.append(col)
+        self._sync_cell_xy()
+
+    def _sync_cell_xy(self) -> None:
+        for grid_x in range(self.width):
+            for grid_y in range(self.height):
+                row = self.height - grid_y - 1
+                col = grid_x
+                cell = self.cells[grid_x][grid_y]
+                cell._rowcol = (row, col)
+                cell._xy = cast(
+                    FloatCoordinate,
+                    rio.transform.xy(self.transform, row, col, offset="center"),
+                )
 
     @property
     def attributes(self) -> set[str]:
@@ -386,14 +443,54 @@ class RasterLayer(RasterBase):
                 f"Data shape does not match raster shape. "
                 f"Expected (*, {self.height}, {self.width}), received {data.shape}."
             )
-        if attr_name is None:
-            attr_name = self._default_attribute_name
-        self._attributes.add(attr_name)
-        for x in range(self.width):
-            for y in range(self.height):
-                setattr(self.cells[x][y], attr_name, data[0, self.height - y - 1, x])
+        num_bands = data.shape[0]
 
-    def get_raster(self, attr_name: str | None = None) -> np.ndarray:
+        if num_bands == 1:
+            if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
+                if len(attr_name) != 1:
+                    raise ValueError(
+                        "attr_name sequence length must match the number of raster bands; "
+                        f"expected {num_bands} band names, got {len(attr_name)}."
+                    )
+                names = [attr_name[0]]
+            else:
+                names = [cast(str | None, attr_name)]
+        else:
+            if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
+                if len(attr_name) != num_bands:
+                    raise ValueError(
+                        "attr_name sequence length must match the number of raster bands; "
+                        f"expected {num_bands} band names, got {len(attr_name)}."
+                    )
+                names = list(attr_name)
+            elif isinstance(attr_name, str):
+                names = [f"{attr_name}_{band_idx + 1}" for band_idx in range(num_bands)]
+            else:
+                names = [None] * num_bands
+
+        def _default_attr_name() -> str:
+            base = self._default_attribute_name
+            if base not in self._attributes:
+                return base
+            suffix = 1
+            candidate = f"{base}_{suffix}"
+            while candidate in self._attributes:
+                suffix += 1
+                candidate = f"{base}_{suffix}"
+            return candidate
+
+        for band_idx, name in enumerate(names):
+            attr = _default_attr_name() if name is None else name
+            self._attributes.add(attr)
+            for grid_x in range(self.width):
+                for grid_y in range(self.height):
+                    setattr(
+                        self.cells[grid_x][grid_y],
+                        attr,
+                        data[band_idx, self.height - grid_y - 1, grid_x],
+                    )
+
+    def get_raster(self, attr_name: str | Sequence[str] | None = None) -> np.ndarray:
         """
         Return the values of given attribute.
 
