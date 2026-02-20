@@ -6,10 +6,8 @@ Raster Layers
 from __future__ import annotations
 
 import copy
-import inspect
 import itertools
 import math
-import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, TypeVar, cast, overload
 
@@ -559,7 +557,9 @@ class RasterLayer(RasterBase):
                 radius=radius,
                 include_center=include_center,
             ).cells
-            coordinates = [cast(Coordinate, cell.coordinate) for cell in neighborhood_cells]
+            coordinates = [
+                cast(Coordinate, cell.coordinate) for cell in neighborhood_cells
+            ]
 
             if not moore:
                 x, y = pos
