@@ -241,7 +241,6 @@ class Cell(Agent):
 
         self._pos = pos
 
-
     @property
     def indices(self) -> Coordinate | None:
         """
@@ -601,7 +600,6 @@ class RasterLayer(RasterBase):
         x, y = self.transform * (col + u, row + v)
 
         return x, y
-        
 
     def iter_neighborhood(
         self,
@@ -850,7 +848,6 @@ class RasterLayer(RasterBase):
         :param str driver: The GDAL driver to use for writing the raster file.
             Default is 'GTiff'. See GDAL docs at https://gdal.org/drivers/raster/index.html.
         """
-        
 
         data = self.get_raster(attr_name)
         with rio.open(
