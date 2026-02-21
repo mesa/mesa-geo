@@ -579,6 +579,30 @@ class RasterLayer(RasterBase):
                     )
         return data
 
+    def get_random_coord(self, cell: Cell | Coordinate) -> FloatCoordinate:
+        """
+        Get a random geographic/projected coordinate within the boundaries of a given cell.
+
+        :param cell: The Cell object or its grid position (grid_x, grid_y).
+        :return: A random (x, y) coordinate tuple in the CRS units.
+        """
+        if isinstance(cell, tuple):
+            cell = self.cells[cell[0]][cell[1]]
+
+        row, col = cell.rowcol
+
+        # Generate random offsets within the 1x1 pixel bounds [0.0, 1.0)
+        # Using the model's random number generator ensures simulation reproducibility
+        u = self.model.random.random()
+        v = self.model.random.random()
+
+        # Apply the affine transform to map from pixel space to CRS geographic space.
+        # This matrix multiplication safely handles any spatial resolution, rotation, or shearing.
+        x, y = self.transform * (col + u, row + v)
+
+        return x, y
+        
+
     def iter_neighborhood(
         self,
         pos: Coordinate,
@@ -826,6 +850,7 @@ class RasterLayer(RasterBase):
         :param str driver: The GDAL driver to use for writing the raster file.
             Default is 'GTiff'. See GDAL docs at https://gdal.org/drivers/raster/index.html.
         """
+        
 
         data = self.get_raster(attr_name)
         with rio.open(
