@@ -171,6 +171,7 @@ class Cell(Agent):
 
     Deprecated:
         `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
+        `Cell.pos` is deprecated. Use `Cell.grid_pos` instead.
     """
 
     _pos: Coordinate | None
@@ -204,29 +205,42 @@ class Cell(Agent):
         self._xy = xy
 
     @property
-    def pos(self) -> Coordinate | None:
+    def grid_pos(self) -> Coordinate | None:
         """
         Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
         """
         return self._pos
 
+    @property
+    def pos(self) -> Coordinate | None:
+        """
+        Deprecated alias of `grid_pos`.
+        """
+        warnings.warn(
+            "Cell.pos is deprecated and will be removed in a future release. "
+            "Use Cell.grid_pos instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._pos
+
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
         """
-        Deprecated setter for `pos`.
+        Deprecated setter for `grid_pos`.
         """
-        # mesa Agent set pos to None by default
+        # mesa Agent sets pos to None by default
         # avoid raising a warning when pos is set to None by the Agent constructor
         if pos is not None:
             warnings.warn(
-                "Cell.pos setter is deprecated and will be read-only in a future release.",
+                "Cell.pos is deprecated and will be removed in a future release. "
+                "Use Cell.grid_pos instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
 
-        # set the pos for backward compatibility
-        # in the future, this will be removed because pos is read-only
         self._pos = pos
+
 
     @property
     def indices(self) -> Coordinate | None:
