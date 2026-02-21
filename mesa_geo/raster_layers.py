@@ -241,7 +241,6 @@ class Cell(Agent):
 
         self._pos = pos
 
-
     @property
     def indices(self) -> Coordinate | None:
         """
