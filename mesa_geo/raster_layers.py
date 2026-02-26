@@ -205,40 +205,15 @@ class Cell(Agent):
         self._xy = xy
 
     @property
-    def grid_pos(self) -> Coordinate | None:
+    def pos(self) -> Coordinate | None:
         """
         Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
         """
         return self._pos
 
-    @property
-    def pos(self) -> Coordinate | None:
-        """
-        Deprecated alias of `grid_pos`.
-        """
-        warnings.warn(
-            "Cell.pos is deprecated and will be removed in a future release. "
-            "Use Cell.grid_pos instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._pos
-
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
-        """
-        Deprecated setter for `grid_pos`.
-        """
         # mesa Agent sets pos to None by default
-        # avoid raising a warning when pos is set to None by the Agent constructor
-        if pos is not None:
-            warnings.warn(
-                "Cell.pos is deprecated and will be removed in a future release. "
-                "Use Cell.grid_pos instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
         self._pos = pos
 
     @property
@@ -578,27 +553,37 @@ class RasterLayer(RasterBase):
                     )
         return data
 
-    def get_random_coord(self, cell: Cell | Coordinate) -> FloatCoordinate:
+    def get_random_xy(
+        self,
+        cell: Cell | None = None,
+        *,
+        pos: Coordinate | None = None,
+        rowcol: Coordinate | None = None,
+    ) -> FloatCoordinate:
         """
-        Get a random geographic/projected coordinate within the boundaries of a given cell.
-
-        :param cell: The Cell object or its grid position (grid_x, grid_y).
-        :return: A random (x, y) coordinate tuple in the CRS units.
+        Generate random continuous (x, y) coordinates within a specific raster cell.
+        
+        Exactly one of `cell`, `pos`, or `rowcol` must be provided.
         """
-        if isinstance(cell, tuple):
-            cell = self.cells[cell[0]][cell[1]]
+        provided = [arg for arg in [cell, pos, rowcol] if arg is not None]
+        if len(provided) != 1:
+            raise ValueError("Exactly one of cell, pos, or rowcol must be provided.")
 
-        row, col = cell.rowcol
+        # Resolve to pixel coordinates (col, row)
+        if cell is not None:
+            col, row = cell.pos
+        elif pos is not None:
+            col, row = pos
+        else:
+            row, col = rowcol
 
-        # Generate random offsets within the 1x1 pixel bounds [0.0, 1.0)
-        # Using the model's random number generator ensures simulation reproducibility
+        # Generate random fractional offsets [0.0, 1.0)
         u = self.model.random.random()
         v = self.model.random.random()
 
-        # Apply the affine transform to map from pixel space to CRS geographic space.
-        # This matrix multiplication safely handles any spatial resolution, rotation, or shearing.
+        # Map pixel space to continuous CRS space using Affine matrix
         x, y = self.transform * (col + u, row + v)
-
+        
         return x, y
 
     def iter_neighborhood(

@@ -434,3 +434,21 @@ class TestRasterLayer(unittest.TestCase):
                 for idx in range(data.shape[0])
             )
         )
+    
+
+    def test_get_random_xy(self):
+        from mesa import Model
+        from mesa_geo.raster_layers import RasterLayer
+
+        m = Model()
+        m.random.seed(42) # Ensure deterministic tests
+        
+        # 10x10 grid, CRS bounds from 0 to 10
+        r = RasterLayer(10, 10, "EPSG:4326", [0, 0, 10, 10], m)
+        
+        # Test using `pos` kwargs
+        x, y = r.get_random_xy(pos=(0, 0))
+        
+        # Cell (0,0) bounds are x: [0, 1], y: [0, 1]
+        assert 0.0 <= x <= 1.0
+        assert 0.0 <= y <= 1.0
