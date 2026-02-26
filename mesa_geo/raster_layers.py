@@ -562,7 +562,7 @@ class RasterLayer(RasterBase):
     ) -> FloatCoordinate:
         """
         Generate random continuous (x, y) coordinates within a specific raster cell.
-        
+
         Exactly one of `cell`, `pos`, or `rowcol` must be provided.
         """
         provided = [arg for arg in [cell, pos, rowcol] if arg is not None]
@@ -583,7 +583,7 @@ class RasterLayer(RasterBase):
 
         # Map pixel space to continuous CRS space using Affine matrix
         x, y = self.transform * (col + u, row + v)
-        
+
         return x, y
 
     def iter_neighborhood(
