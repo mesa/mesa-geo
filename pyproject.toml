@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "Mesa-Geo"
 description = "GIS Agent-based modeling (ABM) in Python"
 license = { text = "Apache 2.0" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
   { name = "Mesa Team", email = "maintainers@projectmesa.dev" },
 ]
@@ -29,9 +29,10 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Development Status :: 3 - Alpha",
@@ -89,9 +90,9 @@ path = "mesa_geo/__init__.py"
 
 [tool.ruff]
 # See https://github.com/charliermarsh/ruff#rules for error code definitions.
-# Hardcode to Python 3.10.
+# Hardcode to Python 3.11.
 # Reminder to update mesa-examples if the value below is changed.
-target-version = "py310"
+target-version = "py311"
 extend-exclude = ["docs", "build"]
 
 lint.select = [
