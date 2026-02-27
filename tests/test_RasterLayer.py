@@ -419,6 +419,12 @@ class TestRasterLayer(unittest.TestCase):
         # Inside the raster footprint.
         self.assertFalse(sheared_layer.out_of_bounds(xy=(1.5, 0.5)))
 
+    def test_out_of_bounds_xy_rejects_non_finite_values(self):
+        self.assertTrue(self.raster_layer.out_of_bounds(xy=(np.nan, 0.0)))
+        self.assertTrue(self.raster_layer.out_of_bounds(xy=(0.0, np.nan)))
+        self.assertTrue(self.raster_layer.out_of_bounds(xy=(np.inf, 0.0)))
+        self.assertTrue(self.raster_layer.out_of_bounds(xy=(0.0, -np.inf)))
+
     def test_cell_xy_updates_after_to_crs(self):
         original_xy = self.raster_layer.cells[0][0].xy
         transformed_layer = self.raster_layer.to_crs("epsg:3857")

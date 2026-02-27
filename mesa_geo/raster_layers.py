@@ -201,9 +201,13 @@ class RasterBase(GeoBase):
 
         assert xy is not None
         x_coord, y_coord = xy
+        if not (np.isfinite(x_coord) and np.isfinite(y_coord)):
+            return True
         # Use inverse affine mapping so rotated/sheared rasters are handled
         # correctly (total_bounds alone can include points outside coverage).
         col, row = (~self.transform) * (x_coord, y_coord)
+        if not (np.isfinite(col) and np.isfinite(row)):
+            return True
         # Inverse-transform outputs floats; boundary points can land slightly
         # outside [0, width]/[0, height] due to floating-point roundoff.
         tol = np.finfo(float).eps * max(
