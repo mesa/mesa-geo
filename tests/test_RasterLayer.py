@@ -342,6 +342,32 @@ class TestRasterLayer(unittest.TestCase):
         )
         self.assertEqual(tr_cell.xy, expected_xy)
 
+    def test_get_random_xy_selector_equivalence(self):
+        cell = self.raster_layer.cells[1][2]
+
+        self.model.random.seed(19)
+        xy_from_cell = self.raster_layer.get_random_xy(cell=cell)
+        self.model.random.seed(19)
+        xy_from_pos = self.raster_layer.get_random_xy(pos=(1, 2))
+        self.model.random.seed(19)
+        xy_from_rowcol = self.raster_layer.get_random_xy(rowcol=(0, 1))
+
+        self.assertEqual(xy_from_cell, xy_from_pos)
+        self.assertEqual(xy_from_pos, xy_from_rowcol)
+
+    def test_get_random_xy_raises_for_out_of_bounds_pos(self):
+        with self.assertRaises(ValueError):
+            self.raster_layer.get_random_xy(pos=(self.raster_layer.width, 0))
+
+    def test_get_random_xy_raises_for_out_of_bounds_rowcol(self):
+        with self.assertRaises(ValueError):
+            self.raster_layer.get_random_xy(rowcol=(self.raster_layer.height, 0))
+
+    def test_get_random_xy_raises_for_cell_without_rowcol(self):
+        detached_cell = mg.Cell(self.model, pos=(0, 0), rowcol=None)
+        with self.assertRaises(ValueError):
+            self.raster_layer.get_random_xy(cell=detached_cell)
+
     def test_cell_xy_updates_after_to_crs(self):
         original_xy = self.raster_layer.cells[0][0].xy
         transformed_layer = self.raster_layer.to_crs("epsg:3857")
@@ -434,21 +460,3 @@ class TestRasterLayer(unittest.TestCase):
                 for idx in range(data.shape[0])
             )
         )
-
-    def test_get_random_xy(self):
-        from mesa import Model
-
-        from mesa_geo.raster_layers import RasterLayer
-
-        m = Model()
-        m.random.seed(42)  # Ensure deterministic tests
-
-        # 10x10 grid, CRS bounds from 0 to 10
-        r = RasterLayer(10, 10, "EPSG:4326", [0, 0, 10, 10], m)
-
-        # Test using `pos` kwargs
-        x, y = r.get_random_xy(pos=(0, 0))
-
-        # Cell (0,0) bounds are x: [0, 1], y: [0, 1]
-        assert 0.0 <= x <= 1.0
-        assert 0.0 <= y <= 1.0

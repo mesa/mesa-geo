@@ -171,7 +171,6 @@ class Cell(Agent):
 
     Deprecated:
         `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
-        `Cell.pos` is deprecated. Use `Cell.grid_pos` instead.
     """
 
     _pos: Coordinate | None
@@ -213,7 +212,20 @@ class Cell(Agent):
 
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
-        # mesa Agent sets pos to None by default
+        """
+        Deprecated setter for `pos`.
+        """
+        # mesa Agent set pos to None by default
+        # avoid raising a warning when pos is set to None by the Agent constructor
+        if pos is not None:
+            warnings.warn(
+                "Cell.pos setter is deprecated and will be read-only in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        # set the pos for backward compatibility
+        # in the future, this will be removed because pos is read-only
         self._pos = pos
 
     @property
@@ -563,19 +575,51 @@ class RasterLayer(RasterBase):
         """
         Generate random continuous (x, y) coordinates within a specific raster cell.
 
-        Exactly one of `cell`, `pos`, or `rowcol` must be provided.
-        """
-        provided = [arg for arg in [cell, pos, rowcol] if arg is not None]
-        if len(provided) != 1:
-            raise ValueError("Exactly one of cell, pos, or rowcol must be provided.")
+        Exactly one of ``cell``, ``pos``, or ``rowcol`` must be provided.
 
-        # Resolve to pixel coordinates (col, row)
+        :param Cell | None cell: Cell to sample from.
+        :param Coordinate | None pos: Grid coordinate in ``(grid_x, grid_y)``
+            format with origin at lower left.
+        :param Coordinate | None rowcol: Raster index in ``(row, col)`` format
+            with origin at upper left.
+        :return: Random continuous ``(x, y)`` coordinate within the selected
+            cell in CRS units.
+        :rtype: FloatCoordinate
+        :raises ValueError: If selector arguments are invalid or out of bounds.
+        """
+        provided = [
+            name
+            for name, arg in (("cell", cell), ("pos", pos), ("rowcol", rowcol))
+            if arg is not None
+        ]
+        if len(provided) != 1:
+            selected = ", ".join(provided) if provided else "none"
+            raise ValueError(
+                "Exactly one of ``cell``, ``pos``, or ``rowcol`` must be provided. "
+                f"Received: {selected}."
+            )
+
+        # Resolve to pixel coordinates (row, col)
         if cell is not None:
-            col, row = cell.pos
+            if cell.rowcol is None:
+                raise ValueError("`cell.rowcol` is None; cannot derive raster indices.")
+            row, col = cell.rowcol
         elif pos is not None:
-            col, row = pos
+            if self.out_of_bounds(pos):
+                raise ValueError(
+                    f"`pos` {pos} is out of bounds for raster with width={self.width} and "
+                    f"height={self.height}."
+                )
+            grid_x, grid_y = pos
+            row, col = self.height - grid_y - 1, grid_x
         else:
+            assert rowcol is not None
             row, col = rowcol
+            if not (0 <= row < self.height and 0 <= col < self.width):
+                raise ValueError(
+                    f"`rowcol` {(row, col)} is out of bounds for raster with "
+                    f"height={self.height} and width={self.width}."
+                )
 
         # Generate random fractional offsets [0.0, 1.0)
         u = self.model.random.random()
