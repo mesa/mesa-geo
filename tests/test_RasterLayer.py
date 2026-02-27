@@ -404,6 +404,21 @@ class TestRasterLayer(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.raster_layer.out_of_bounds((0, 0), xy=self.raster_layer.cells[0][0].xy)
 
+    def test_out_of_bounds_xy_respects_sheared_transform_coverage(self):
+        sheared_layer = mg.RasterLayer(
+            width=2,
+            height=2,
+            crs="epsg:4326",
+            total_bounds=[0.0, 0.0, 4.0, 2.0],
+            model=self.model,
+        )
+        sheared_layer._transform = rio.transform.Affine(1.0, 1.0, 0.0, 0.0, 1.0, 0.0)
+
+        # Inside bbox but outside the sheared raster footprint.
+        self.assertTrue(sheared_layer.out_of_bounds(xy=(0.5, 1.5)))
+        # Inside the raster footprint.
+        self.assertFalse(sheared_layer.out_of_bounds(xy=(1.5, 0.5)))
+
     def test_cell_xy_updates_after_to_crs(self):
         original_xy = self.raster_layer.cells[0][0].xy
         transformed_layer = self.raster_layer.to_crs("epsg:3857")

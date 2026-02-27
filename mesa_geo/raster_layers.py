@@ -201,16 +201,23 @@ class RasterBase(GeoBase):
 
         assert xy is not None
         x_coord, y_coord = xy
-        min_x, min_y, max_x, max_y = self.total_bounds
-        # Treat boundary points as in-bounds for continuous CRS coordinates.
+        # Use inverse affine mapping so rotated/sheared rasters are handled
+        # correctly (total_bounds alone can include points outside coverage).
+        col, row = (~self.transform) * (x_coord, y_coord)
+        # Inverse-transform outputs floats; boundary points can land slightly
+        # outside [0, width]/[0, height] due to floating-point roundoff.
         tol = np.finfo(float).eps * max(
-            1.0, abs(min_x), abs(min_y), abs(max_x), abs(max_y)
+            1.0,
+            abs(col),
+            abs(row),
+            float(self.width),
+            float(self.height),
         )
         return (
-            x_coord < min_x - tol
-            or x_coord > max_x + tol
-            or y_coord < min_y - tol
-            or y_coord > max_y + tol
+            col < -tol
+            or col > self.width + tol
+            or row < -tol
+            or row > self.height + tol
         )
 
 
