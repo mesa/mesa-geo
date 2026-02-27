@@ -1,7 +1,6 @@
 import base64
+import io
 import unittest
-from io import BytesIO
-from unittest.mock import patch
 
 import mesa
 import numpy as np
@@ -220,6 +219,7 @@ class TestMapModule(unittest.TestCase):
         )
 
     def test_render_raster_layers(self):
+
         map_module = mgv.MapModule(
             portrayal_method=lambda x: (255, 255, 255, 0.5),
             tiles=xyz.OpenStreetMap.Mapnik,
@@ -229,74 +229,23 @@ class TestMapModule(unittest.TestCase):
             self.raster_layer.to_image(colormap=lambda x: (0, 0, 0, 1))
         )
 
-        # _render_layers should call image_to_url with the correct RGBA arrays
-        # and return the expected layer metadata structure.
-        # We mock image_to_url so the test does not depend on PNG/zlib byte output.
-        captured_arrays = []
+        layers = map_module.render(self.model).get("layers")
+        self.assertEqual(layers["total_bounds"], [[0.0, 0.0], [1.0, 1.0]])
+        self.assertEqual(layers["vectors"], [])
 
-        def capture_url(array):
-            captured_arrays.append(np.array(array))
-            return f"mock://raster/{len(captured_arrays)}"
+        rasters = layers["rasters"]
+        self.assertEqual(len(rasters), 2)
 
-        with patch(
-            "mesa_geo.visualization.components.geospace_component.image_to_url",
-            side_effect=capture_url,
-        ) as mocked_image_to_url:
-            self.assertDictEqual(
-                map_module.render(self.model).get("layers"),
-                {
-                    "rasters": [
-                        {
-                            "url": "mock://raster/1",
-                            "bounds": [[0.0, 0.0], [1.0, 1.0]],
-                        },
-                        {
-                            "url": "mock://raster/2",
-                            "bounds": [[0.0, 0.0], [1.0, 1.0]],
-                        },
-                    ],
-                    "total_bounds": [[0.0, 0.0], [1.0, 1.0]],
-                    "vectors": [],
-                },
-            )
+        for raster in rasters:
+            self.assertEqual(raster["bounds"], [[0.0, 0.0], [1.0, 1.0]])
+            self.assertTrue(raster["url"].startswith("data:image/png;base64,"))
 
-        self.assertEqual(mocked_image_to_url.call_count, 2)
-        self.assertEqual(captured_arrays[0].shape, (1, 1, 4))
-        self.assertEqual(captured_arrays[1].shape, (1, 1, 4))
-        np.testing.assert_allclose(
-            captured_arrays[0], np.array([[[255.0, 255.0, 255.0, 0.5]]])
-        )
-        np.testing.assert_allclose(
-            captured_arrays[1], np.array([[[0.0, 0.0, 0.0, 1.0]]])
-        )
+        def verify_image(url_str, expected_rgba):
+            b64_data = url_str.split(",", 1)[1]
+            image_bytes = base64.b64decode(b64_data)
+            img = Image.open(io.BytesIO(image_bytes))
+            self.assertEqual(img.size, (1, 1))
+            self.assertEqual(img.getpixel((0, 0)), expected_rgba)
 
-    def test_render_raster_layers_png_data_url_smoke(self):
-        map_module = mgv.MapModule(
-            portrayal_method=lambda x: (255, 255, 255, 0.5),
-            tiles=xyz.OpenStreetMap.Mapnik,
-        )
-        self.model.space.add_layer(self.raster_layer)
-        self.model.space.add_layer(
-            self.raster_layer.to_image(colormap=lambda x: (0, 0, 0, 1))
-        )
-
-        # with the real encoder, raster URLs should be valid PNG data URLs that
-        # decode to expected image semantics.
-        rasters = map_module.render(self.model).get("layers")["rasters"]
-        # First raster is the RasterLayer rendered via MapModule portrayal_method
-        # (255, 255, 255, 0.5), which write_png normalization maps to white + alpha 255.
-        # Second raster is the precomputed ImageLayer from to_image(colormap=(0, 0, 0, 1)),
-        # which stays black + alpha 255.
-        expected_pixels = [(255, 255, 255, 255), (0, 0, 0, 255)]
-        for raster, expected_pixel in zip(rasters, expected_pixels, strict=True):
-            url = raster["url"]
-            self.assertTrue(url.startswith("data:image/png;base64,"))
-            payload = url.split(",", maxsplit=1)[1]
-            png_bytes = base64.b64decode(payload, validate=True)
-            self.assertTrue(png_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
-            self.assertIn(b"IHDR", png_bytes)
-            self.assertTrue(png_bytes.endswith(b"\x00\x00\x00\x00IEND\xaeB`\x82"))
-            with Image.open(BytesIO(png_bytes)) as image:
-                self.assertEqual(image.mode, "RGBA")
-                self.assertEqual(image.size, (1, 1))
-                self.assertEqual(image.getpixel((0, 0)), expected_pixel)
+        verify_image(rasters[0]["url"], (255, 255, 255, 255))
+        verify_image(rasters[1]["url"], (0, 0, 0, 255))
