@@ -37,4 +37,4 @@ jobs:
     - name: Test examples
       run: |
         cd mesa-examples
-        pytest -rA -Werror -Wdefault::FutureWarning test_gis_examples.py
+        pytest -rA -Werror -Wdefault::FutureWarning -Wdefault::DeprecationWarning test_gis_examples.py

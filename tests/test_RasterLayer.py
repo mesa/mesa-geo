@@ -5,6 +5,7 @@ import warnings
 
 import mesa
 import numpy as np
+import pytest
 import rasterio as rio
 
 import mesa_geo as mg
@@ -307,6 +308,18 @@ class TestRasterLayer(unittest.TestCase):
         self.assertEqual(max_cell.pos, (1, 1))
         self.assertEqual(max_cell.elevation, 4)
 
+    def test_cell_incompatible_assignment(self):
+        self.raster_layer.apply_raster(
+            np.array([[[1, 2], [3, 4], [5, 6]]]), attr_name="elevation"
+        )
+        cell = self.raster_layer.cells[0][0]
+        # Valid assignment updates backend
+        cell.elevation = 99
+        self.assertEqual(cell.elevation, 99)
+        # Incompatible assignment skips backend but doesn't raise
+        cell.elevation = None
+        self.assertIsNone(cell.__dict__.get("elevation"))
+
     def test_deprecated_pos_indices_accessors(self):
         cell = self.raster_layer.cells[0][0]
         with warnings.catch_warnings(record=True) as captured:
@@ -434,3 +447,110 @@ class TestRasterLayer(unittest.TestCase):
                 for idx in range(data.shape[0])
             )
         )
+
+
+def test_cell_missing_raster_layer_kwarg():
+    class OldSchoolCell(mg.Cell):
+        def __init__(self, model, pos=None, indices=None):
+            super().__init__(model, pos, indices)
+
+    rl = mg.RasterLayer(
+        10,
+        10,
+        "epsg:4326",
+        total_bounds=[0, 0, 10, 10],
+        model=mesa.Model(),
+        cell_cls=OldSchoolCell,
+    )
+    cell = rl.cells[0][0]
+    assert isinstance(cell, OldSchoolCell)
+    assert cell.raster_layer is rl
+
+
+def test_cell_wrapper_dunder_methods():
+    rl = mg.RasterLayer(
+        10, 10, "epsg:4326", total_bounds=[0, 0, 10, 10], model=mesa.Model()
+    )
+
+    # Test __iter__ of _CellWrapper
+    cols = list(rl.cells)
+    assert len(cols) == 10
+
+    # Test __iter__ and __len__ of _CellColumn
+    col = rl.cells[0]
+    cells = list(col)
+    assert len(cells) == 10
+    assert len(col) == 10
+
+    # Test exceptions
+    with pytest.raises(TypeError):
+        _ = rl.cells["invalid"]
+
+    with pytest.raises(TypeError):
+        _ = rl.cells[0]["invalid"]
+
+
+def test_cell_coverage():
+    rl = mg.RasterLayer(
+        10, 10, "epsg:4326", total_bounds=[0, 0, 10, 10], model=mesa.Model()
+    )
+    rl.apply_raster(np.ones((1, 10, 10), dtype=np.int32), attr_name="test_attr")
+
+    wrapper = rl.cells
+    cell1 = wrapper[0][0]
+    cell2 = wrapper[0][0]  # Hit cache
+    assert cell1 is cell2
+
+    with pytest.raises(AttributeError):
+        _ = cell1.non_existent_attr
+
+    # Hit TypeError fallback in Cell.__setattr__ by assigning None to numpy numeric matrix
+    cell1.test_attr = None
+    assert cell1.__dict__["test_attr"] is None
+
+    # Hit the pos is None branch
+    cell1._pos = None
+    cell1.test_attr = 5
+    assert cell1.__dict__["test_attr"] == 5
+
+    cell1.step()
+
+    with pytest.warns(DeprecationWarning):
+        rl._sync_cell_xy()
+
+
+def test_cell_extra_coverage():
+    # Hit missing random assignment coverage
+    cell = mg.Cell(model=mesa.Model(), pos=(5, 5))
+    assert hasattr(cell, "random")
+
+    # Test xy property returns None when raster_layer or rowcol is None
+    assert cell.xy is None
+
+
+def test_raster_layer_getitem():
+    rl = mg.RasterLayer(
+        10, 10, "epsg:4326", total_bounds=[0, 0, 10, 10], model=mesa.Model()
+    )
+
+    # 1. Test int indexing: rl[x] -> returns list of cells
+    col = rl[3]
+    assert len(col) == 10
+    assert col[5].pos == (3, 5)
+
+    # 2. Test sequence of coordinates: rl[[(0,0), (1,1)]] -> returns list of cells
+    cells = rl[[(0, 0), (1, 1)]]
+    assert len(cells) == 2
+    assert cells[0].pos == (0, 0)
+    assert cells[1].pos == (1, 1)
+
+    # 3. Test grid indexing: rl[x, y] -> returns single cell
+    cell = rl[3, 5]
+    assert cell.pos == (3, 5)
+
+    # 4. Test slice indexing: rl[3:5, 4:6]
+    # Note from code: rl[slice, slice] loops over the slices
+    cells_slice = rl[3:5, 4:6]
+    # Expect generator/list of cells
+    cells_list = list(cells_slice)
+    assert len(cells_list) > 0
