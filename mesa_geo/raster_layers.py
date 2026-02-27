@@ -653,7 +653,7 @@ class RasterLayer(RasterBase):
             if cell.rowcol is None:
                 raise ValueError("`cell.rowcol` is None; cannot derive raster indices.")
             row, col = cell.rowcol
-            if not (0 <= row < self.height and 0 <= col < self.width):
+            if self.out_of_bounds(rowcol=(row, col)):
                 raise ValueError(
                     f"`cell.rowcol` {(row, col)} is out of bounds for raster with "
                     f"height={self.height} and width={self.width}."
@@ -669,7 +669,7 @@ class RasterLayer(RasterBase):
         else:
             assert rowcol is not None
             row, col = rowcol
-            if not (0 <= row < self.height and 0 <= col < self.width):
+            if self.out_of_bounds(rowcol=(row, col)):
                 raise ValueError(
                     f"`rowcol` {(row, col)} is out of bounds for raster with "
                     f"height={self.height} and width={self.width}."
