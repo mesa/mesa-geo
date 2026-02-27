@@ -219,7 +219,6 @@ class TestMapModule(unittest.TestCase):
         )
 
     def test_render_raster_layers(self):
-
         map_module = mgv.MapModule(
             portrayal_method=lambda x: (255, 255, 255, 0.5),
             tiles=xyz.OpenStreetMap.Mapnik,
