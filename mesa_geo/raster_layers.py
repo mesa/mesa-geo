@@ -152,17 +152,66 @@ class RasterBase(GeoBase):
     def to_crs(self, crs, inplace=False) -> RasterBase | None:
         raise NotImplementedError
 
-    def out_of_bounds(self, pos: Coordinate) -> bool:
+    def out_of_bounds(
+        self,
+        pos: Coordinate | None = None,
+        *,
+        rowcol: Coordinate | None = None,
+        xy: FloatCoordinate | None = None,
+    ) -> bool:
         """
-        Determines whether position is off the grid.
+        Determine whether a coordinate is outside the raster extent.
 
-        :param Coordinate pos: Position to check.
-        :return: True if position is off the grid, False otherwise.
+        Exactly one selector must be provided.
+
+        :param Coordinate | None pos: Grid position in ``(grid_x, grid_y)`` format
+            with origin at lower left.
+        :param Coordinate | None rowcol: Raster indices in ``(row, col)`` format
+            with origin at upper left.
+        :param FloatCoordinate | None xy: Continuous ``(x, y)`` coordinate in CRS units.
+        :return: True if the selected coordinate is off the raster, False otherwise.
         :rtype: bool
+        :raises ValueError: If selector arguments are invalid.
         """
 
-        x, y = pos
-        return x < 0 or x >= self.width or y < 0 or y >= self.height
+        provided = [
+            name
+            for name, arg in (("pos", pos), ("rowcol", rowcol), ("xy", xy))
+            if arg is not None
+        ]
+        if len(provided) != 1:
+            selected = ", ".join(provided) if provided else "none"
+            raise ValueError(
+                "Exactly one of ``pos``, ``rowcol``, or ``xy`` must be provided. "
+                f"Received: {selected}."
+            )
+
+        if pos is not None:
+            grid_x, grid_y = pos
+            return (
+                grid_x < 0
+                or grid_x >= self.width
+                or grid_y < 0
+                or grid_y >= self.height
+            )
+
+        if rowcol is not None:
+            row, col = rowcol
+            return row < 0 or row >= self.height or col < 0 or col >= self.width
+
+        assert xy is not None
+        x_coord, y_coord = xy
+        min_x, min_y, max_x, max_y = self.total_bounds
+        # Treat boundary points as in-bounds for continuous CRS coordinates.
+        tol = np.finfo(float).eps * max(
+            1.0, abs(min_x), abs(min_y), abs(max_x), abs(max_y)
+        )
+        return (
+            x_coord < min_x - tol
+            or x_coord > max_x + tol
+            or y_coord < min_y - tol
+            or y_coord > max_y + tol
+        )
 
 
 class Cell(Agent):
@@ -604,6 +653,11 @@ class RasterLayer(RasterBase):
             if cell.rowcol is None:
                 raise ValueError("`cell.rowcol` is None; cannot derive raster indices.")
             row, col = cell.rowcol
+            if not (0 <= row < self.height and 0 <= col < self.width):
+                raise ValueError(
+                    f"`cell.rowcol` {(row, col)} is out of bounds for raster with "
+                    f"height={self.height} and width={self.width}."
+                )
         elif pos is not None:
             if self.out_of_bounds(pos):
                 raise ValueError(
