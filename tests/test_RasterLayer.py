@@ -8,6 +8,7 @@ import numpy as np
 import rasterio as rio
 
 import mesa_geo as mg
+from mesa_geo.raster_layers import accept_tuple_argument
 
 
 class TestRasterLayer(unittest.TestCase):
@@ -93,6 +94,22 @@ class TestRasterLayer(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             self.raster_layer.apply_raster(np.empty((1, 100, 100)))
+
+    def test_accept_tuple_argument_wraps_single_coordinate(self):
+        @accept_tuple_argument
+        def wrapped(_, positions):
+            return positions
+
+        positions = wrapped(None, (1, 2))
+        self.assertEqual(positions, [(1, 2)])
+
+    def test_accept_tuple_argument_keeps_sequence_input(self):
+        @accept_tuple_argument
+        def wrapped(_, positions):
+            return positions
+
+        positions = wrapped(None, [(1, 2), (2, 3)])
+        self.assertEqual(positions, [(1, 2), (2, 3)])
 
     def test_apply_raster_single_band_attr_name_none(self):
         raster_data = np.array([[[7, 8], [9, 10], [11, 12]]])
