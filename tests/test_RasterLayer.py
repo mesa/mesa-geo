@@ -84,13 +84,12 @@ class TestRasterLayer(unittest.TestCase):
           [3, 4],
           [5, 6]]]
         """
-        generated_attr = next(iter(self.raster_layer.attributes))
-        self.assertEqual(getattr(self.raster_layer.cells[0][1], generated_attr), 3)
-        self.assertEqual(self.raster_layer.attributes, {generated_attr})
+        self.assertEqual(self.raster_layer.cells[0][1].val, 3)
+        self.assertEqual(self.raster_layer.attributes, {"val"})
 
         self.raster_layer.apply_raster(raster_data, attr_name="elevation")
         self.assertEqual(self.raster_layer.cells[0][1].elevation, 3)
-        self.assertEqual(self.raster_layer.attributes, {generated_attr, "elevation"})
+        self.assertEqual(self.raster_layer.attributes, {"val", "elevation"})
 
         with self.assertRaises(ValueError):
             self.raster_layer.apply_raster(np.empty((1, 100, 100)))
@@ -308,18 +307,6 @@ class TestRasterLayer(unittest.TestCase):
         self.assertEqual(max_cell.pos, (1, 1))
         self.assertEqual(max_cell.elevation, 4)
 
-    def test_get_neighborhood_von_neumann(self):
-        neighborhood = self.raster_layer.get_neighborhood(
-            pos=(1, 1), moore=False, include_center=False, radius=1
-        )
-        self.assertEqual(neighborhood, [(0, 1), (1, 0), (1, 2)])
-
-    def test_get_neighborhood_von_neumann_with_center(self):
-        neighborhood = self.raster_layer.get_neighborhood(
-            pos=(1, 1), moore=False, include_center=True, radius=1
-        )
-        self.assertEqual(neighborhood, [(0, 1), (1, 0), (1, 1), (1, 2)])
-
     def test_deprecated_pos_indices_accessors(self):
         cell = self.raster_layer.cells[0][0]
         with warnings.catch_warnings(record=True) as captured:
@@ -330,21 +317,6 @@ class TestRasterLayer(unittest.TestCase):
             all(issubclass(item.category, DeprecationWarning) for item in captured)
         )
         self.assertIn("Cell.indices is deprecated", str(captured[0].message))
-
-    def test_cell_init_with_discrete_space_style_args(self):
-        cell = mg.Cell(None, (1, 2), 3, random=self.model.random)
-        self.assertEqual(cell.pos, (1, 2))
-        self.assertIsNone(cell.model)
-
-    def test_cell_init_with_legacy_model_positional_arg(self):
-        cell = mg.Cell(None, self.model)
-        self.assertIs(cell.model, self.model)
-        self.assertEqual(cell.pos, (0, 0))
-
-    def test_cell_init_without_coordinate_defaults_to_origin(self):
-        cell = mg.Cell(self.model)
-        self.assertEqual(cell.pos, (0, 0))
-        self.assertIs(cell.model, self.model)
 
     def test_transform_accuracy(self):
         """

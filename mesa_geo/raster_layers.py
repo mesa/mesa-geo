@@ -6,6 +6,7 @@ Raster Layers
 from __future__ import annotations
 
 import copy
+import inspect
 import itertools
 import math
 import warnings
@@ -16,8 +17,7 @@ import numpy as np
 import rasterio as rio
 from affine import Affine
 from mesa import Model
-from mesa.discrete_space import Cell as MesaDiscreteCell
-from mesa.discrete_space import OrthogonalMooreGrid
+from mesa.agent import Agent
 from rasterio.warp import (
     Resampling,
     calculate_default_transform,
@@ -183,7 +183,7 @@ class RasterBase(GeoBase):
         return x < 0 or x >= self.width or y < 0 or y >= self.height
 
 
-class Cell(MesaDiscreteCell):
+class Cell(Agent):
     """
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
 
@@ -191,71 +191,66 @@ class Cell(MesaDiscreteCell):
         `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
     """
 
-    model: Model | None
     _pos: Coordinate | None
     _rowcol: Coordinate | None
     _xy: FloatCoordinate | None
 
     def __init__(
         self,
-        model: Model | None = None,
-        *args,
-        coordinate: Coordinate | None = None,
-        position=None,
-        capacity=None,
-        random=None,
-        **kwargs,
+        model,
+        pos=None,
+        indices=None,
+        *,
+        rowcol=None,
+        xy=None,
     ):
         """
         Initialize a cell.
 
-        :param coordinate: Position of the cell in (x, y) format.
+        :param pos: Grid position of the cell in (grid_x, grid_y) format.
             Origin is at lower left corner of the grid
+        :param indices: (Deprecated) Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid. Use rowcol instead.
+        :param rowcol: Indices of the cell in (row, col) format.
+            Origin is at upper left corner of the grid
+        :param xy: Geographic/projected (x, y) coordinates of the cell center in the CRS.
         """
 
-        if args:
-            # Backward compatibility:
-            # 1) Mesa discrete-space style: Cell((x, y), capacity, random=...)
-            # 2) Legacy mesa-geo style: Cell(model, ...)
-            first = args[0]
-            if isinstance(first, tuple) and len(first) == 2 and coordinate is None:
-                coordinate = cast(Coordinate, first)
-                if len(args) > 1 and capacity is None:
-                    capacity = args[1]
-            elif model is None:
-                model = first
-
-        if coordinate is None:
-            coordinate = cast(Coordinate, kwargs.pop("coordinate", (0, 0)))
-
-        super().__init__(
-            coordinate=coordinate,
-            position=position,
-            capacity=capacity,
-            random=random,
-        )
-        x, y = coordinate
-        self.model = model
-        self._pos = (x, y)
-        self._rowcol = None
-        self._xy = None
+        super().__init__(model)
+        self._pos = pos
+        self._rowcol = indices if rowcol is None else rowcol
+        self._xy = xy
 
     @property
     def pos(self) -> Coordinate | None:
+        """
+        Grid position in (grid_x, grid_y) format with origin at lower left of the grid.
+        """
         return self._pos
 
     @pos.setter
     def pos(self, pos: Coordinate | None) -> None:
+        """
+        Deprecated setter for `pos`.
+        """
+        # mesa Agent set pos to None by default
+        # avoid raising a warning when pos is set to None by the Agent constructor
         if pos is not None:
             warnings.warn(
                 "Cell.pos setter is deprecated and will be read-only in a future release.",
                 DeprecationWarning,
                 stacklevel=2,
             )
+
+        # set the pos for backward compatibility
+        # in the future, this will be removed because pos is read-only
         self._pos = pos
 
     @property
     def indices(self) -> Coordinate | None:
+        """
+        Deprecated alias of `rowcol`.
+        """
         warnings.warn(
             "Cell.indices is deprecated and will be removed in a future release. "
             "Use Cell.rowcol instead.",
@@ -266,20 +261,32 @@ class Cell(MesaDiscreteCell):
 
     @indices.setter
     def indices(self, indices: Coordinate | None) -> None:
+        """
+        Deprecated setter for `rowcol`.
+        """
         warnings.warn(
             "Cell.indices is deprecated and will be removed in a future release. "
             "Use Cell.rowcol instead.",
             DeprecationWarning,
             stacklevel=2,
         )
+        # for backward compatibility, set the rowcol to the indices
+        # in the future, this will be removed
+        # and raise an AttributeError, because indices is read-only
         self._rowcol = indices
 
     @property
     def rowcol(self) -> Coordinate | None:
+        """
+        Raster indices in (row, col) format with origin at upper left of the grid.
+        """
         return self._rowcol
 
     @property
     def xy(self) -> FloatCoordinate | None:
+        """
+        Geographic/projected (x, y) coordinates of the cell center in the CRS.
+        """
         return self._xy
 
     def step(self):
@@ -288,7 +295,7 @@ class Cell(MesaDiscreteCell):
 
 class RasterLayer(RasterBase):
     """
-    Some methods in `RasterLayer` are copied from Mesa's legacy grid implementation, including:
+    Some methods in `RasterLayer` are copied from `mesa.space.Grid`, including:
 
     __getitem__
     __iter__
@@ -301,7 +308,7 @@ class RasterLayer(RasterBase):
     iter_cell_list_contents
     get_cell_list_contents
 
-    Methods from the legacy grid implementation that are not copied over:
+    Methods from `mesa.space.Grid` that are not copied over:
 
     torus_adj
     neighbor_iter
@@ -314,16 +321,13 @@ class RasterLayer(RasterBase):
     find_empty
     exists_empty_cells
 
-    Another difference is that the legacy grid implementation has
-    `self.grid: List[List[Agent | None]]`,
+    Another difference is that `mesa.space.Grid` has `self.grid: List[List[Agent | None]]`,
     whereas it is `self.cells: List[List[Cell]]` here in `RasterLayer`.
     """
 
     cells: list[list[Cell]]
-    _grid: OrthogonalMooreGrid
     _neighborhood_cache: dict[Any, list[Coordinate]]
     _attributes: set[str]
-    _default_attribute_name: str
 
     def __init__(
         self, width, height, crs, total_bounds, model, cell_cls: type[Cell] = Cell
@@ -331,79 +335,64 @@ class RasterLayer(RasterBase):
         super().__init__(width, height, crs, total_bounds)
         self.model = model
         self.cell_cls = cell_cls
-        self._initialize_cells(model, cell_cls)
+        self._initialize_cells()
         self._attributes = set()
-        self._default_attribute_name = "attribute_0"
         self._neighborhood_cache = {}
 
-    def _initialize_cells(self, model: Model, cell_cls: type[Cell]):
-        self._grid = OrthogonalMooreGrid(
-            dimensions=(self.width, self.height),
-            torus=False,
-            random=model.random,
-            cell_klass=MesaDiscreteCell,
-        )
-        self.cells = []
-        for x in range(self.width):
-            col: list[Cell] = []
-            for y in range(self.height):
-                cell = self._make_cell_instance(cell_cls, model, (x, y))
-                col.append(cell)
-            self.cells.append(col)
-        self._sync_cell_xy()
-
-    def _make_cell_instance(
-        self, cell_cls: type[Cell], model: Model, coordinate: Coordinate
-    ) -> Cell:
-        # Support both legacy constructor style (Cell(model, **kwargs))
-        # and discrete-space style (Cell(coordinate=..., ...)).
-        candidates = [
-            lambda: cell_cls(
-                model=model,
-                coordinate=coordinate,
-                capacity=None,
-                random=model.random,
-            ),
-            lambda: cell_cls(
-                coordinate=coordinate,
-                capacity=None,
-                random=model.random,
-            ),
-            lambda: cell_cls(model=model),
-            lambda: cell_cls(model),
-            lambda: cell_cls(),
-        ]
-        last_error: Exception | None = None
-        for ctor in candidates:
-            try:
-                cell = ctor()
-                break
-            except TypeError as exc:
-                last_error = exc
-        else:
-            raise TypeError(
-                f"Unable to instantiate raster cell class {cell_cls.__name__}"
-            ) from last_error
-
-        cell = cast(Cell, cell)
-        cell.model = model
-        if hasattr(cell, "_pos"):
-            cell._pos = coordinate
-        else:
-            cell.pos = coordinate
-        return cell
+    def _update_transform(self) -> None:
+        super()._update_transform()
+        if getattr(self, "cells", None):
+            self._sync_cell_xy()
 
     def _sync_cell_xy(self) -> None:
-        for grid_x in range(self.width):
-            for grid_y in range(self.height):
-                row = self.height - grid_y - 1
-                col = grid_x
-                cell = self.cells[grid_x][grid_y]
-                cell._rowcol = (row, col)
-                cell._xy = cast(
-                    FloatCoordinate,
-                    rio.transform.xy(self.transform, row, col, offset="center"),
+        for column in self.cells:
+            for cell in column:
+                row, col = cell.rowcol
+                cell._xy = rio.transform.xy(self.transform, row, col, offset="center")
+
+    def _initialize_cells(self) -> None:
+        try:
+            init_params = inspect.signature(self.cell_cls.__init__).parameters
+        except (TypeError, ValueError):
+            supports_legacy_pos_indices = False
+        else:
+            supports_legacy_pos_indices = (
+                "pos" in init_params and "indices" in init_params
+            )
+
+        if supports_legacy_pos_indices:
+
+            def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
+                # Backward-compatible path for legacy signature:
+                # __init__(self, model, pos=None, indices=None, ...)
+                cell = self.cell_cls(
+                    self.model,
+                    pos=(grid_x, grid_y),
+                    indices=(row_idx, col_idx),
                 )
+                # Legacy constructor path does not accept xy; set it manually.
+                cell._xy = xy
+                return cell
+        else:
+            # New constructor path: __init__(self, model, pos=None, rowcol=None, xy=None, ...)
+            # or: __init__(self, model, **kwargs)
+            def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
+                return self.cell_cls(
+                    self.model,
+                    pos=(grid_x, grid_y),
+                    rowcol=(row_idx, col_idx),
+                    xy=xy,
+                )
+
+        self.cells = []
+        for grid_x in range(self.width):
+            col: list[Cell] = []
+            for grid_y in range(self.height):
+                row_idx, col_idx = self.height - grid_y - 1, grid_x
+                xy = rio.transform.xy(self.transform, row_idx, col_idx, offset="center")
+                cell = make_cell(grid_x, grid_y, row_idx, col_idx, xy)
+                col.append(cell)
+            self.cells.append(col)
 
     @property
     def attributes(self) -> set[str]:
@@ -532,7 +521,7 @@ class RasterLayer(RasterBase):
                 names = [None] * num_bands
 
         def _default_attr_name() -> str:
-            base = self._default_attribute_name
+            base = f"attribute_{len(self.cell_cls.__dict__)}"
             if base not in self._attributes:
                 return base
             suffix = 1
@@ -712,23 +701,22 @@ class RasterLayer(RasterBase):
         neighborhood = self._neighborhood_cache.get(cache_key, None)
 
         if neighborhood is None:
-            center = self._grid[pos]
-            neighborhood_cells = center.get_neighborhood(
-                radius=radius,
-                include_center=include_center,
-            ).cells
-            coordinates = [
-                cast(Coordinate, cell.coordinate) for cell in neighborhood_cells
-            ]
+            coordinates: set[Coordinate] = set()
 
-            if not moore:
-                x, y = pos
-                coordinates = [
-                    coord
-                    for coord in coordinates
-                    if (include_center or coord != pos)
-                    and abs(coord[0] - x) + abs(coord[1] - y) <= radius
-                ]
+            x, y = pos
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if dx == 0 and dy == 0 and not include_center:
+                        continue
+                    # Skip coordinates that are outside manhattan distance
+                    if not moore and abs(dx) + abs(dy) > radius:
+                        continue
+
+                    coord = (x + dx, y + dy)
+
+                    if self.out_of_bounds(coord):
+                        continue
+                    coordinates.add(coord)
 
             neighborhood = sorted(coordinates)
             self._neighborhood_cache[cache_key] = neighborhood
