@@ -5,9 +5,6 @@ Raster Layers
 
 from __future__ import annotations
 
-#for the property_layer (custom code)
-from mesa_geo.property_layer import PropertyLayer
-
 import copy
 import inspect
 import itertools
@@ -30,6 +27,9 @@ from rasterio.warp import (
 )
 
 from mesa_geo.geo_base import GeoBase
+
+# for the property_layer (custom code)
+from mesa_geo.property_layer import PropertyLayer
 
 
 class RasterBase(GeoBase):
@@ -381,7 +381,7 @@ class RasterLayer(RasterBase):
         self.model = model
         self.cell_cls = cell_cls
         self._initialize_cells()
-        #self._attributes = set()
+        # self._attributes = set()
         self.property_layer = PropertyLayer(width, height, self)
         self._neighborhood_cache = {}
 
