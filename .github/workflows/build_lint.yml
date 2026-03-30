@@ -63,4 +63,4 @@ jobs:
       run: pytest --durations=10 --cov=mesa_geo tests/ --cov-report=xml
     - if: matrix.os == 'ubuntu'
       name: Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
