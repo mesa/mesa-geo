@@ -28,6 +28,9 @@ from rasterio.warp import (
 
 from mesa_geo.geo_base import GeoBase
 
+# for the property_layer (custom code)
+from mesa_geo.property_layer import PropertyLayer
+
 
 class RasterBase(GeoBase):
     """
@@ -378,7 +381,8 @@ class RasterLayer(RasterBase):
         self.model = model
         self.cell_cls = cell_cls
         self._initialize_cells()
-        self._attributes = set()
+        # self._attributes = set()
+        self.property_layer = PropertyLayer(width, height, self)
         self._neighborhood_cache = {}
 
     def _update_transform(self) -> None:
@@ -444,7 +448,8 @@ class RasterLayer(RasterBase):
         :return: Attributes of the cells in the raster layer.
         :rtype: Set[str]
         """
-        return self._attributes
+        # Delegating to PropertyLayer to handle attributes
+        return self.property_layer.attributes
 
     @overload
     def __getitem__(self, index: int) -> list[Cell]: ...
@@ -531,58 +536,8 @@ class RasterLayer(RasterBase):
             names are generated. Default is None.
         :raises ValueError: If the shape of the data does not match the raster.
         """
-
-        if data.ndim != 3 or data.shape[1:] != (self.height, self.width):
-            raise ValueError(
-                f"Data shape does not match raster shape. "
-                f"Expected (*, {self.height}, {self.width}), received {data.shape}."
-            )
-        num_bands = data.shape[0]
-
-        if num_bands == 1:
-            if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
-                if len(attr_name) != 1:
-                    raise ValueError(
-                        "attr_name sequence length must match the number of raster bands; "
-                        f"expected {num_bands} band names, got {len(attr_name)}."
-                    )
-                names = [attr_name[0]]
-            else:
-                names = [cast(str | None, attr_name)]
-        else:
-            if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
-                if len(attr_name) != num_bands:
-                    raise ValueError(
-                        "attr_name sequence length must match the number of raster bands; "
-                        f"expected {num_bands} band names, got {len(attr_name)}."
-                    )
-                names = list(attr_name)
-            elif isinstance(attr_name, str):
-                names = [f"{attr_name}_{band_idx + 1}" for band_idx in range(num_bands)]
-            else:
-                names = [None] * num_bands
-
-        def _default_attr_name() -> str:
-            base = f"attribute_{len(self.cell_cls.__dict__)}"
-            if base not in self._attributes:
-                return base
-            suffix = 1
-            candidate = f"{base}_{suffix}"
-            while candidate in self._attributes:
-                suffix += 1
-                candidate = f"{base}_{suffix}"
-            return candidate
-
-        for band_idx, name in enumerate(names):
-            attr = _default_attr_name() if name is None else name
-            self._attributes.add(attr)
-            for grid_x in range(self.width):
-                for grid_y in range(self.height):
-                    setattr(
-                        self.cells[grid_x][grid_y],
-                        attr,
-                        data[band_idx, self.height - grid_y - 1, grid_x],
-                    )
+        # Delegating to PropertyLayer for separation of concerns
+        self.property_layer.apply_raster(data, attr_name)
 
     def get_raster(self, attr_name: str | Sequence[str] | None = None) -> np.ndarray:
         """
@@ -594,36 +549,8 @@ class RasterLayer(RasterBase):
             (bands, height, width).
         :rtype: np.ndarray
         """
-
-        if isinstance(attr_name, str) and attr_name not in self.attributes:
-            raise ValueError(
-                f"Attribute {attr_name} does not exist. "
-                f"Choose from {self.attributes}, or set `attr_name` to `None` to retrieve all."
-            )
-        if isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
-            missing = [name for name in attr_name if name not in self.attributes]
-            if missing:
-                raise ValueError(
-                    f"Attribute {missing[0]} does not exist. "
-                    f"Choose from {self.attributes}, or set `attr_name` to `None` to retrieve all."
-                )
-        if attr_name is None:
-            num_bands = len(self.attributes)
-            attr_names = self.attributes
-        elif isinstance(attr_name, Sequence) and not isinstance(attr_name, str):
-            num_bands = len(attr_name)
-            attr_names = list(attr_name)
-        else:
-            num_bands = 1
-            attr_names = [attr_name]
-        data = np.empty((num_bands, self.height, self.width))
-        for ind, name in enumerate(attr_names):
-            for grid_x in range(self.width):
-                for grid_y in range(self.height):
-                    data[ind, self.height - grid_y - 1, grid_x] = getattr(
-                        self.cells[grid_x][grid_y], name
-                    )
-        return data
+        # Delegating to PropertyLayer for separation of concerns
+        return self.property_layer.get_raster(attr_name)
 
     def get_random_xy(
         self,
