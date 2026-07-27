@@ -229,6 +229,10 @@ class Cell(Agent):
     """
     Cells are containers of raster attributes, and are building blocks of `RasterLayer`.
 
+    Band data is stored in the parent RasterLayer's ``_data`` arrays.
+    Cell proxies attribute access into those arrays via ``__getattr__``
+    and ``__setattr__``.
+
     Deprecated:
         `Cell.indices` is deprecated. Use `Cell.rowcol` instead.
     """
@@ -245,6 +249,7 @@ class Cell(Agent):
         *,
         rowcol=None,
         xy=None,
+        _layer=None,
     ):
         """
         Initialize a cell.
@@ -256,12 +261,39 @@ class Cell(Agent):
         :param rowcol: Indices of the cell in (row, col) format.
             Origin is at upper left corner of the grid
         :param xy: Geographic/projected (x, y) coordinates of the cell center in the CRS.
+        :param _layer: The parent RasterLayer for band proxy access (internal use).
         """
+        self._layer = _layer
 
         super().__init__(model)
         self._pos = pos
         self._rowcol = indices if rowcol is None else rowcol
         self._xy = xy
+
+    def __getattr__(self, name: str):
+        try:
+            layer = object.__getattribute__(self, "_layer")
+        except AttributeError:
+            raise AttributeError(f"No attribute '{name}'") from None
+        if layer is not None and name in layer._data:
+            row, col = object.__getattribute__(self, "_rowcol")
+            return layer._data[name][row, col]
+        raise AttributeError(f"No band '{name}' on this layer")
+
+    def __setattr__(self, name: str, value):
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        try:
+            layer = object.__getattribute__(self, "_layer")
+        except AttributeError:
+            object.__setattr__(self, name, value)
+            return
+        if layer is not None and name in layer._data:
+            row, col = object.__getattribute__(self, "_rowcol")
+            layer._data[name][row, col] = value
+            return
+        object.__setattr__(self, name, value)
 
     @property
     def pos(self) -> Coordinate | None:
@@ -275,8 +307,6 @@ class Cell(Agent):
         """
         Deprecated setter for `pos`.
         """
-        # mesa Agent set pos to None by default
-        # avoid raising a warning when pos is set to None by the Agent constructor
         if pos is not None:
             warnings.warn(
                 "Cell.pos setter is deprecated and will be read-only in a future release.",
@@ -284,8 +314,6 @@ class Cell(Agent):
                 stacklevel=2,
             )
 
-        # set the pos for backward compatibility
-        # in the future, this will be removed because pos is read-only
         self._pos = pos
 
     @property
@@ -333,6 +361,17 @@ class Cell(Agent):
 
     def step(self):
         pass
+
+    @property
+    def grid_pos(self) -> Coordinate:
+        """
+        Grid position in (grid_x, grid_y) format with origin at lower left.
+        Preferred replacement for the deprecated ``pos`` property.
+        """
+        row, col = self._rowcol
+        grid_x = col
+        grid_y = self._layer.height - row - 1
+        return grid_x, grid_y
 
 
 class RasterLayer(RasterBase):
@@ -407,25 +446,23 @@ class RasterLayer(RasterBase):
         if supports_legacy_pos_indices:
 
             def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
-                # Backward-compatible path for legacy signature:
-                # __init__(self, model, pos=None, indices=None, ...)
                 cell = self.cell_cls(
                     self.model,
                     pos=(grid_x, grid_y),
                     indices=(row_idx, col_idx),
+                    _layer=self,
                 )
-                # Legacy constructor path does not accept xy; set it manually.
                 cell._xy = xy
                 return cell
         else:
-            # New constructor path: __init__(self, model, pos=None, rowcol=None, xy=None, ...)
-            # or: __init__(self, model, **kwargs)
+
             def make_cell(grid_x: int, grid_y: int, row_idx: int, col_idx: int, xy):
                 return self.cell_cls(
                     self.model,
                     pos=(grid_x, grid_y),
                     rowcol=(row_idx, col_idx),
                     xy=xy,
+                    _layer=self,
                 )
 
         self.cells = []
@@ -539,13 +576,6 @@ class RasterLayer(RasterBase):
         else:
             self._data[name] = np.full((self.height, self.width), data)
         self._attributes.add(name)
-        for grid_x in range(self.width):
-            for grid_y in range(self.height):
-                setattr(
-                    self.cells[grid_x][grid_y],
-                    name,
-                    self._data[name][self.height - grid_y - 1, grid_x],
-                )
 
     def get_band(self, name: str) -> np.ndarray:
         """
@@ -560,13 +590,7 @@ class RasterLayer(RasterBase):
             raise ValueError(
                 f"Band '{name}' does not exist. Choose from {self._attributes}."
             )
-        data = np.empty((self.height, self.width))
-        for grid_x in range(self.width):
-            for grid_y in range(self.height):
-                data[self.height - grid_y - 1, grid_x] = getattr(
-                    self.cells[grid_x][grid_y], name
-                )
-        return data
+        return self._data[name].copy()
 
     def remove_band(self, name: str) -> None:
         """
@@ -579,9 +603,6 @@ class RasterLayer(RasterBase):
             raise ValueError(f"Band '{name}' does not exist.")
         del self._data[name]
         self._attributes.discard(name)
-        for column in self.cells:
-            for cell in column:
-                delattr(cell, name)
 
     def apply_raster(
         self, data: np.ndarray, attr_name: str | Sequence[str] | None = None
@@ -642,13 +663,6 @@ class RasterLayer(RasterBase):
             attr = _default_attr_name() if name is None else name
             self._attributes.add(attr)
             self._data[attr] = data[band_idx].copy()
-            for grid_x in range(self.width):
-                for grid_y in range(self.height):
-                    setattr(
-                        self.cells[grid_x][grid_y],
-                        attr,
-                        data[band_idx, self.height - grid_y - 1, grid_x],
-                    )
 
     def get_raster(self, attr_name: str | Sequence[str] | None = None) -> np.ndarray:
         """
@@ -684,11 +698,7 @@ class RasterLayer(RasterBase):
             attr_names = [attr_name]
         data = np.empty((num_bands, self.height, self.width))
         for ind, name in enumerate(attr_names):
-            for grid_x in range(self.width):
-                for grid_y in range(self.height):
-                    data[ind, self.height - grid_y - 1, grid_x] = getattr(
-                        self.cells[grid_x][grid_y], name
-                    )
+            data[ind] = self._data[name]
         return data
 
     def get_random_xy(
