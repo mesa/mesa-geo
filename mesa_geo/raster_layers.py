@@ -362,17 +362,6 @@ class Cell(Agent):
     def step(self):
         pass
 
-    @property
-    def grid_pos(self) -> Coordinate:
-        """
-        Grid position in (grid_x, grid_y) format with origin at lower left.
-        Preferred replacement for the deprecated ``pos`` property.
-        """
-        row, col = self._rowcol
-        grid_x = col
-        grid_y = self._layer.height - row - 1
-        return grid_x, grid_y
-
 
 class RasterLayer(RasterBase):
     """
