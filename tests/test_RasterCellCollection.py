@@ -22,13 +22,8 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
             total_bounds=[0, 0, 3, 4],
             model=self.model,
         )
-        # Add a band so cells have data to read
         self.elevation = np.arange(12, dtype=float).reshape(4, 3)
         self.layer.set_band("elevation", self.elevation)
-
-    # ------------------------------------------------------------------
-    # __init__
-    # ------------------------------------------------------------------
 
     def test_default_mask_selects_all(self):
         """mask=None should select every cell."""
@@ -49,10 +44,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         with self.assertRaises(ValueError):
             RasterCellCollection(self.layer, bad_mask)
 
-    # ------------------------------------------------------------------
-    # __len__
-    # ------------------------------------------------------------------
-
     def test_len_all(self):
         coll = RasterCellCollection(self.layer)
         self.assertEqual(len(coll), 12)
@@ -64,13 +55,9 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
 
     def test_len_partial(self):
         mask = np.zeros((4, 3), dtype=bool)
-        mask[1, :] = True  # one full row → 3 cells
+        mask[1, :] = True  # one full row -> 3 cells
         coll = RasterCellCollection(self.layer, mask)
         self.assertEqual(len(coll), 3)
-
-    # ------------------------------------------------------------------
-    # __iter__ and _to_cells
-    # ------------------------------------------------------------------
 
     def test_iter_yields_cells(self):
         """Iterating should yield Cell objects."""
@@ -91,10 +78,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         cell = cells[0]
         self.assertEqual(cell.rowcol, (0, 2))
 
-    # ------------------------------------------------------------------
-    # Orientation test (Step 0 point 3 / Step 6 item 2)
-    # ------------------------------------------------------------------
-
     def test_orientation_top_row_maps_to_max_grid_y(self):
         """Selecting the top row of _data (row=0) must yield cells with
         grid_y == height - 1, NOT grid_y == 0.  This is the vertical-flip
@@ -112,15 +95,10 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
                 f"cells[{col}][{self.layer.height - 1}]",
             )
 
-    # ------------------------------------------------------------------
-    # __contains__
-    # ------------------------------------------------------------------
-
     def test_contains_selected_cell(self):
         mask = np.zeros((4, 3), dtype=bool)
         mask[1, 2] = True
         coll = RasterCellCollection(self.layer, mask)
-        # The cell at grid_x=2, grid_y=height-1-1=2 → rowcol=(1, 2)
         cell = self.layer.cells[2][2]  # cells[col_idx][grid_y]
         self.assertEqual(cell.rowcol, (1, 2))
         self.assertIn(cell, coll)
@@ -129,13 +107,8 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         mask = np.zeros((4, 3), dtype=bool)
         mask[1, 2] = True
         coll = RasterCellCollection(self.layer, mask)
-        # A cell NOT in the mask
         cell = self.layer.cells[0][0]
         self.assertNotIn(cell, coll)
-
-    # ------------------------------------------------------------------
-    # to_list
-    # ------------------------------------------------------------------
 
     def test_to_list_matches_iter(self):
         mask = np.zeros((4, 3), dtype=bool)
@@ -143,10 +116,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         mask[3, :] = True
         coll = RasterCellCollection(self.layer, mask)
         self.assertEqual(coll.to_list(), list(coll))
-
-    # ------------------------------------------------------------------
-    # Set operations: &, |, ~
-    # ------------------------------------------------------------------
 
     def test_and(self):
         mask_a = np.zeros((4, 3), dtype=bool)
@@ -159,7 +128,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         a = RasterCellCollection(self.layer, mask_a)
         b = RasterCellCollection(self.layer, mask_b)
         result = a & b
-        # Intersection: only row 1
         self.assertEqual(len(result), 3)
         np.testing.assert_array_equal(result._mask, mask_a & mask_b)
 
@@ -172,7 +140,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         a = RasterCellCollection(self.layer, mask_a)
         b = RasterCellCollection(self.layer, mask_b)
         result = a | b
-        # Union: rows 0 and 1
         self.assertEqual(len(result), 6)
         np.testing.assert_array_equal(result._mask, mask_a | mask_b)
 
@@ -200,10 +167,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = a | b
 
-    # ------------------------------------------------------------------
-    # __repr__
-    # ------------------------------------------------------------------
-
     def test_repr(self):
         coll = RasterCellCollection(self.layer)
         r = repr(coll)
@@ -216,10 +179,6 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
         coll = RasterCellCollection(self.layer, mask)
         r = repr(coll)
         self.assertIn("1/12", r)
-
-    # ------------------------------------------------------------------
-    # Agreement: collection iteration vs Cell proxy reads
-    # ------------------------------------------------------------------
 
     def test_agreement_iter_vs_cell_proxy(self):
         """Every cell yielded by the collection should have an elevation
@@ -237,14 +196,12 @@ class TestRasterCellCollectionContainer(unittest.TestCase):
 
     def test_mask_mutation_after_construction(self):
         """Mutating the input mask after construction must not change the
-        collection — the copy=True in __init__ should insulate it."""
+        collection : the copy=True in __init__ should insulate it."""
         mask = np.zeros((4, 3), dtype=bool)
         mask[0, 0] = True
         coll = RasterCellCollection(self.layer, mask)
         self.assertEqual(len(coll), 1)
-        # mutate the original mask
         mask[:] = True
-        # collection should still have only 1 cell
         self.assertEqual(len(coll), 1)
 
 
@@ -273,7 +230,6 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
     def test_select_vectorized(self):
         """A simple mask-based operation should vectorize."""
         coll = RasterCellCollection(self.layer)
-        # Cells with elevation > 5
         res = coll.select(lambda c: c.elevation > 5)
         self.assertEqual(len(res), 6)  # 6, 7, 8, 9, 10, 11
         for cell in res:
@@ -284,7 +240,6 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
         coll = RasterCellCollection(self.layer)
 
         def f(c):
-            # This will raise TypeError when evaluated with an ndarray
             return math.sqrt(c.elevation) > 2.5
 
         res = coll.select(f)
@@ -303,16 +258,24 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
         coll = RasterCellCollection(self.layer)
         res = coll.select(lambda c: c.elevation >= 0, at_most=5)
         self.assertEqual(len(res), 5)
-        # Should be the first 5 in iteration order (row-major: elevation 0, 1, 2, 3, 4)
         for expected_elev, cell in zip(range(5), res):
             self.assertEqual(cell.elevation, expected_elev)
 
     def test_select_at_most_float(self):
         """at_most=<float> should return a fraction of the current collection size."""
         coll = RasterCellCollection(self.layer)
-        # len(coll) is 12. 0.5 * 12 = 6
         res = coll.select(at_most=0.5)
         self.assertEqual(len(res), 6)
+
+    def test_select_filter_with_float_at_most(self):
+        """Float at_most uses pre-filter collection size, not match count."""
+        coll = RasterCellCollection(self.layer)
+        # 12 cells total, 6 match elevation > 5.
+        # at_most=0.25 => limit = int(0.25 * 12) = 3, applied after filtering.
+        res = coll.select(lambda c: c.elevation > 5, at_most=0.25)
+        self.assertEqual(len(res), 3)
+        for cell in res:
+            self.assertGreater(cell.elevation, 5)
 
     def test_select_inplace(self):
         """inplace=True should mutate the collection."""
@@ -322,7 +285,7 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
         self.assertEqual(len(coll), 6)
 
     def test_select_at_most_float_one_returns_all(self):
-        """at_most=1.0 means 100% — should return the full selection."""
+        """at_most=1.0 means 100%: should return the full selection."""
         coll = RasterCellCollection(self.layer)
         res = coll.select(at_most=1.0)
         self.assertEqual(len(res), 12)
@@ -334,10 +297,6 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
             coll.select(at_most=True)
         with self.assertRaises(TypeError):
             coll.select(at_most=False)
-
-    # ------------------------------------------------------------------
-    # Fallback tests: non-vectorizable predicate forms
-    # ------------------------------------------------------------------
 
     def test_select_fallback_python_and(self):
         """Python `and` in a lambda forces fallback; result must match
@@ -359,13 +318,7 @@ class TestRasterCellCollectionSelect(unittest.TestCase):
         coll = RasterCellCollection(self.layer)
         expected = coll.select(lambda c: c.elevation > 5)
         got = coll.select(lambda c: c.elevation > 5 if c.elevation else False)
-        # When elevation==0, the `if` branch evaluates to False, but
-        # elevation 0 is not > 5 anyway, so masks should match.
         np.testing.assert_array_equal(got._mask, expected._mask)
-
-    # ------------------------------------------------------------------
-    # Validation tests: bad predicates that should raise
-    # ------------------------------------------------------------------
 
     def test_select_scalar_result_raises(self):
         """A predicate that returns a scalar (e.g. .sum()) should raise,
@@ -397,13 +350,8 @@ class TestRasterCellCollectionData(unittest.TestCase):
         self.elevation = np.arange(12, dtype=float).reshape(4, 3)
         self.layer.set_band("elevation", self.elevation)
 
-    # ------------------------------------------------------------------
-    # get
-    # ------------------------------------------------------------------
-
     def test_get_agreement(self):
         """collection.get(band) matches per-cell cell.<band> reads."""
-        # Create a partial mask
         mask = np.zeros((4, 3), dtype=bool)
         mask[1, :] = True
         mask[2, 1] = True
@@ -449,10 +397,6 @@ class TestRasterCellCollectionData(unittest.TestCase):
         with self.assertRaises(ValueError):
             coll.get("elevation", handle_missing="ignore")
 
-    # ------------------------------------------------------------------
-    # set
-    # ------------------------------------------------------------------
-
     def test_set_round_trip(self):
         """set() is visible through Cell reads, and Cell write through get()."""
         mask = np.zeros((4, 3), dtype=bool)
@@ -460,13 +404,11 @@ class TestRasterCellCollectionData(unittest.TestCase):
         mask[2, 2] = True
         coll = RasterCellCollection(self.layer, mask)
 
-        # 1. set() -> Cell read
         coll.set("elevation", 999.0)
         cells = list(coll)
         self.assertEqual(cells[0].elevation, 999.0)
         self.assertEqual(cells[1].elevation, 999.0)
 
-        # 2. Cell write -> get()
         cells[0].elevation = 888.0
         cells[1].elevation = 777.0
         arr = coll.get("elevation")
@@ -500,10 +442,6 @@ class TestRasterCellCollectionData(unittest.TestCase):
         coll = RasterCellCollection(self.layer)
         res = coll.set("elevation", 5)
         self.assertIs(res, coll)
-
-    # ------------------------------------------------------------------
-    # agg and count
-    # ------------------------------------------------------------------
 
     def test_agg_single_callable(self):
         coll = RasterCellCollection(self.layer)

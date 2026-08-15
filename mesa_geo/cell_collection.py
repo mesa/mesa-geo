@@ -36,7 +36,6 @@ class _CellTracer:
     def __getattr__(self, name: str) -> np.ndarray:
         if name in self._layer._data:
             return self._layer._data[name]
-        # Propagate AttributeError for non-band attributes
         raise AttributeError(f"Band '{name}' not found on _CellTracer.")
 
 
@@ -46,9 +45,9 @@ class RasterCellCollection:
     :class:`~mesa_geo.raster_layers.RasterLayer`.
 
     The collection stores a boolean mask of shape ``(height, width)`` in
-    **(row, col) space** — the same layout as ``RasterLayer._data`` — so
-    set operations, aggregation, and bulk reads/writes are O(1) NumPy
-    broadcasts rather than per-cell Python loops.
+    **(row, col) space**: the same layout as ``RasterLayer._data``, so
+    set operations, aggregation, and bulk reads/writes are single NumPy
+    operations rather than per-cell Python loops.
 
     Cells are materialized lazily only when iterated.  Methods such as
     :meth:`get`, :meth:`set`, :meth:`agg`, and :meth:`count` never
@@ -85,9 +84,7 @@ class RasterCellCollection:
                 )
             self._mask = np.array(mask, dtype=bool, copy=True)
 
-    # ------------------------------------------------------------------
-    # Single conversion point — (row, col) → Cell
-    # ------------------------------------------------------------------
+    # Single conversion point : (row, col) -> Cell
 
     def _to_cells(self):
         """
@@ -108,9 +105,7 @@ class RasterCellCollection:
         for r, c in zip(rows, cols):
             yield self._layer.cells[c][h - r - 1]
 
-    # ------------------------------------------------------------------
     # Container protocol
-    # ------------------------------------------------------------------
 
     def __len__(self) -> int:
         """
@@ -171,9 +166,7 @@ class RasterCellCollection:
         """
         return list(self)
 
-    # ------------------------------------------------------------------
     # Set operations
-    # ------------------------------------------------------------------
 
     def __and__(self, other: RasterCellCollection) -> RasterCellCollection:
         """
@@ -215,9 +208,7 @@ class RasterCellCollection:
         """
         return RasterCellCollection(self._layer, ~self._mask)
 
-    # ------------------------------------------------------------------
     # Selection and Filtering
-    # ------------------------------------------------------------------
 
     def select(
         self,
@@ -249,7 +240,8 @@ class RasterCellCollection:
             infinity.
             - If an integer, at most the first ``n`` matching cells are selected.
             - If a float between 0 and 1 (inclusive), at most that fraction of
-              the original cells in this collection are selected.
+              the *pre-filter* collection size (``len(self)``) is selected,
+              matching ``AgentSet.select`` semantics.
             - Booleans are rejected with :class:`TypeError`.
         :param inplace: If ``True``, modifies the current collection;
             otherwise, returns a new collection. Defaults to ``False``.
@@ -265,17 +257,13 @@ class RasterCellCollection:
             try:
                 result = filter_func(tracer)
             except AttributeError:
-                # Missing band accessed — propagate error
+                # Missing band: a typo shouldn't cost a full loop and then fail anyway.
                 raise
             except Exception:
-                # Tracer evaluation itself failed (e.g. math.sqrt on
-                # array, Python `and` on arrays, chained comparison) —
-                # genuinely non-vectorizable, fall through to loop.
+                # Genuinely non-vectorizable (array __bool__, scalar-only func); use loop.
                 needs_fallback = True
 
             if not needs_fallback:
-                # The tracer successfully evaluated the predicate.
-                # Now validate the result shape and dtype.
                 if (
                     isinstance(result, np.ndarray)
                     and result.dtype == bool
@@ -283,24 +271,18 @@ class RasterCellCollection:
                 ):
                     new_mask &= result
                 elif isinstance(result, np.ndarray):
-                    # Tracer produced an array but wrong dtype or shape —
-                    # this is a bad predicate, not a non-vectorizable one.
                     raise ValueError(
                         f"filter_func must return a boolean array of shape "
                         f"{new_mask.shape}, got dtype={result.dtype}, "
                         f"shape={result.shape}."
                     )
                 else:
-                    # Tracer returned a scalar (e.g. .sum() > 100) —
-                    # bad predicate, not non-vectorizable.
                     raise ValueError(
                         f"filter_func must return a boolean array, "
                         f"got scalar {type(result).__name__}."
                     )
             else:
-                # Per-cell fallback — errors from the predicate itself
-                # (e.g. calling .sum() on a float) are NOT caught here;
-                # they propagate immediately to the caller.
+                # Errors from the predicate itself propagate; not caught here.
                 fallback_mask = np.zeros_like(new_mask)
                 for cell in self:
                     if filter_func(cell):
@@ -318,7 +300,6 @@ class RasterCellCollection:
 
             true_indices = np.nonzero(new_mask)
             if len(true_indices[0]) > limit:
-                # Set all elements past `limit` to False
                 rows = true_indices[0][limit:]
                 cols = true_indices[1][limit:]
                 new_mask[rows, cols] = False
@@ -329,9 +310,7 @@ class RasterCellCollection:
         else:
             return RasterCellCollection(self._layer, new_mask)
 
-    # ------------------------------------------------------------------
     # Representation
-    # ------------------------------------------------------------------
 
     def __repr__(self) -> str:
         """
@@ -344,9 +323,7 @@ class RasterCellCollection:
         n = len(self)
         return f"RasterCellCollection({w}x{h} layer, {n}/{h * w} cells selected)"
 
-    # ------------------------------------------------------------------
     # Data Access and Mutation
-    # ------------------------------------------------------------------
 
     def get(
         self,
