@@ -17,7 +17,7 @@ from shapely.prepared import prep
 
 from mesa_geo.geo_base import GeoBase
 from mesa_geo.geoagent import GeoAgent
-from mesa_geo.raster_layers import ImageLayer, RasterLayer
+from mesa_geo.raster_layers import ImageLayer, RasterBase, RasterLayer
 
 
 class GeoSpace(GeoBase):
@@ -44,6 +44,7 @@ class GeoSpace(GeoBase):
         self.warn_crs_conversion = warn_crs_conversion
         self._agent_layer = _AgentLayer()
         self._static_layers = []
+        self._layer_names: dict[str, ImageLayer | RasterLayer | gpd.GeoDataFrame] = {}
         self._total_bounds = None  # [min_x, min_y, max_x, max_y]
 
     def to_crs(self, crs, inplace=False) -> GeoSpace | None:
@@ -70,8 +71,10 @@ class GeoSpace(GeoBase):
             )
             for agent in self.agents:
                 geospace.add_agents(agent.to_crs(target_crs, inplace=False))
+            names_by_id = {id(lyr): nm for nm, lyr in self._layer_names.items()}
             for layer in self.layers:
-                geospace.add_layer(layer.to_crs(target_crs, inplace=False))
+                new_layer = layer.to_crs(target_crs, inplace=False)
+                geospace.add_layer(new_layer, name=names_by_id.get(id(layer)))
             return geospace
 
     @property
@@ -130,11 +133,30 @@ class GeoSpace(GeoBase):
         features = [a.__geo_interface__() for a in self.agents]
         return {"type": "FeatureCollection", "features": features}
 
-    def add_layer(self, layer: ImageLayer | RasterLayer | gpd.GeoDataFrame) -> None:
+    def add_layer(
+        self,
+        layer: ImageLayer | RasterLayer | gpd.GeoDataFrame,
+        name: str | None = None,
+    ) -> None:
         """Add a layer to the Geospace.
 
         :param ImageLayer | RasterLayer | gpd.GeoDataFrame layer: The layer to add.
+        :param str | None name: Optional name for later retrieval via
+            :meth:`get_layer`. Must be unique within this GeoSpace.
+        :raises ValueError: If *name* is already registered or *layer* is already
+            registered under another name.
         """
+        if name is not None:
+            if name in self._layer_names:
+                raise ValueError(
+                    f"A layer named {name!r} is already registered. "
+                    f"Registered names: {list(self._layer_names)}"
+                )
+            for registered_name, registered_layer in self._layer_names.items():
+                if registered_layer is layer:
+                    raise ValueError(
+                        f"Layer is already registered with name {registered_name!r}."
+                    )
         if not self.crs.is_exact_same(layer.crs):
             if self.warn_crs_conversion:
                 warnings.warn(
@@ -146,8 +168,36 @@ class GeoSpace(GeoBase):
                     stacklevel=2,
                 )
             layer.to_crs(self.crs, inplace=True)
+        if name is not None:
+            self._layer_names[name] = layer
+            if isinstance(layer, RasterBase):
+                layer.name = name
         self._total_bounds = None
         self._static_layers.append(layer)
+
+    def get_layer(self, name: str) -> ImageLayer | RasterLayer | gpd.GeoDataFrame:
+        """Retrieve a layer by its registered name.
+
+        :param str name: The name passed to :meth:`add_layer`.
+        :raises KeyError: If no layer with that name exists.
+        """
+        try:
+            return self._layer_names[name]
+        except KeyError:
+            available = list(self._layer_names) or "(none)"
+            raise KeyError(
+                f"No layer named {name!r}. Available names: {available}"
+            ) from None
+
+    def _name_for_layer(
+        self, layer: ImageLayer | RasterLayer | gpd.GeoDataFrame
+    ) -> str | None:
+        """Return the registered name for *layer*, or ``None``."""
+        for registered_name, registered_layer in self._layer_names.items():
+            if registered_layer is layer:
+                return registered_name
+        name = getattr(layer, "name", None)
+        return name if isinstance(name, str) else None
 
     def _check_agent(self, agent):
         if hasattr(agent, "geometry"):
