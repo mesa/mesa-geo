@@ -189,18 +189,17 @@ def make_geospace_component(
         )
     """
 
+    kwargs_to_pass = {}
+    if raster_portrayal is not None:
+        kwargs_to_pass["raster_portrayal"] = raster_portrayal
+
     def MakeSpaceMatplotlib(model):
-        # Forwarded only when set, so the default call stays byte-identical to the
-        # pre-raster_portrayal one that tests/test_geospace_component.py pins.
-        extra = (
-            {} if raster_portrayal is None else {"raster_portrayal": raster_portrayal}
-        )
         return GeoSpaceLeaflet(
             model,
             agent_portrayal,
             view,
             tiles,
-            **extra,
+            **kwargs_to_pass,
             **kwargs,
         )
 
@@ -425,14 +424,10 @@ class _VectorRenderer:
     mechanical: move the class out, wire it up, done.
     """
 
-    def __init__(self, agent_portrayal=None, crs="epsg:4326", marker_factory=None):
+    def __init__(self, agent_portrayal, marker_factory, crs="epsg:4326"):
         self.agent_portrayal = agent_portrayal
         self._crs = crs
-        # MapModule passes its own bound _get_marker, so a MapModule subclass
-        # overriding it still wins after the renderer split.
-        self._marker_factory = (
-            marker_factory if marker_factory is not None else self._get_marker
-        )
+        self._marker_factory = marker_factory
 
     @staticmethod
     def _css_color(value):
@@ -480,73 +475,6 @@ class _VectorRenderer:
     def render_layer(self, layer):
         """Render a GeoDataFrame layer to geo_interface."""
         return layer.to_crs(self._crs)[["geometry"]].__geo_interface__
-
-    def _get_marker(self, location, properties):
-        """
-        takes point objects and transforms them to ipyleaflet marker objects
-
-        allowed marker types are point marker types from ipyleaflet
-        https://ipyleaflet.readthedocs.io/en/latest/layers/index.html
-
-        default is circle with radius 5
-
-        Parameters
-        ----------
-        location: iterable
-            iterable of location in models geometry
-
-        properties : dict
-            properties passed in through agent portrayal
-
-
-        Returns
-        -------
-        ipyleaflet marker element
-
-        """
-        properties = dict(properties)
-        if "fillColor" in properties and "fill_color" not in properties:
-            properties["fill_color"] = properties.pop("fillColor")
-
-        # ipyleaflet colours go through a traitlets Color trait, which rejected
-        # 8-digit hex before ipywidgets 8.1; carry alpha as an opacity instead.
-        for key, opacity_key in (("color", "opacity"), ("fill_color", "fill_opacity")):
-            if key in properties:
-                color, alpha = self._split_alpha(properties[key])
-                properties[key] = color
-                if alpha is not None and opacity_key not in properties:
-                    properties[opacity_key] = alpha
-
-        # Only default the radius when the caller did not name a marker type at all.
-        # An explicit marker_type="Circle" keeps ipyleaflet's own 1000 m default.
-        if "marker_type" not in properties and "radius" not in properties:
-            properties["radius"] = 5
-        marker = properties.pop("marker_type", "Circle")
-
-        if marker == "Circle":
-            return ipyleaflet.Circle(location=location, **properties)
-        elif marker == "CircleMarker":
-            return ipyleaflet.CircleMarker(location=location, **properties)
-        elif marker == "Marker":
-            return ipyleaflet.Marker(location=location, **properties)
-        elif marker == "Icon":
-            icon_url = properties["icon_url"]
-            icon_size = properties.get("icon_size", [20, 20])
-            icon_properties = properties.get("icon_properties", {})
-            icon = ipyleaflet.Icon(
-                icon_url=icon_url, icon_size=icon_size, **icon_properties
-            )
-            return ipyleaflet.Marker(location=location, icon=icon, **properties)
-        elif marker == "AwesomeIcon":
-            name = properties["name"]
-            icon_properties = properties.get("icon_properties", {})
-            icon = ipyleaflet.AwesomeIcon(name=name, **icon_properties)
-            return ipyleaflet.Marker(location=location, icon=icon, **properties)
-
-        else:
-            raise ValueError(
-                f"Unsupported marker type:{marker}",
-            )
 
     def render_agents(self, agents, transformer):
         if (
@@ -715,12 +643,72 @@ class MapModule:
         return layers
 
     def _get_marker(self, location, properties):
-        """Build the ipyleaflet marker for a Point agent.
-
-        Kept on ``MapModule`` as an override point: subclasses that replace it
-        are used by the vector renderer in place of the default implementation.
         """
-        return self.vector_renderer._get_marker(location, properties)
+        takes point objects and transforms them to ipyleaflet marker objects
+
+        allowed marker types are point marker types from ipyleaflet
+        https://ipyleaflet.readthedocs.io/en/latest/layers/index.html
+
+        default is circle with radius 5
+
+        Parameters
+        ----------
+        location: iterable
+            iterable of location in models geometry
+
+        properties : dict
+            properties passed in through agent portrayal
+
+
+        Returns
+        -------
+        ipyleaflet marker element
+
+        """
+        marker = properties.get("marker_type", "Circle")
+        options = {
+            key: value for key, value in properties.items() if key != "marker_type"
+        }
+
+        if "fillColor" in options and "fill_color" not in options:
+            options["fill_color"] = options.pop("fillColor")
+
+        # ipyleaflet colours go through a traitlets Color trait, which rejected
+        # 8-digit hex before ipywidgets 8.1; carry alpha as an opacity instead.
+        for key, opacity_key in (("color", "opacity"), ("fill_color", "fill_opacity")):
+            if key in options:
+                color, alpha = _VectorRenderer._split_alpha(options[key])
+                options[key] = color
+                if alpha is not None and opacity_key not in options:
+                    options[opacity_key] = alpha
+
+        if "marker_type" not in properties and "radius" not in options:
+            options["radius"] = 5
+
+        if marker == "Circle":
+            return ipyleaflet.Circle(location=location, **options)
+        elif marker == "CircleMarker":
+            return ipyleaflet.CircleMarker(location=location, **options)
+        elif marker == "Marker":
+            return ipyleaflet.Marker(location=location, **options)
+        elif marker == "Icon":
+            icon_url = options["icon_url"]
+            icon_size = options.get("icon_size", [20, 20])
+            icon_properties = options.get("icon_properties", {})
+            icon = ipyleaflet.Icon(
+                icon_url=icon_url, icon_size=icon_size, **icon_properties
+            )
+            return ipyleaflet.Marker(location=location, icon=icon, **options)
+        elif marker == "AwesomeIcon":
+            name = options["name"]
+            icon_properties = options.get("icon_properties", {})
+            icon = ipyleaflet.AwesomeIcon(name=name, **icon_properties)
+            return ipyleaflet.Marker(location=location, icon=icon, **options)
+
+        else:
+            raise ValueError(
+                f"Unsupported marker type:{marker}",
+            )
 
     def _render_agents(self, model):
         return self.vector_renderer.render_agents(

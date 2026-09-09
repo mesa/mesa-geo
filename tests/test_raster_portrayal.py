@@ -16,14 +16,18 @@ import matplotlib.colors
 import mesa
 import numpy as np
 import pytest
+import solara
 import xyzservices.providers as xyz
 from mesa.visualization.components import PropertyLayerStyle
+from mesa.visualization.solara_viz import SolaraViz
 from PIL import Image
 from shapely.geometry import Point, Polygon
 
 import mesa_geo as mg
+import mesa_geo.visualization as mgv
 import mesa_geo.visualization.components.geospace_component as gc
 from mesa_geo.raster_layers import ImageLayer, RasterLayer
+from mesa_geo.visualization import make_geospace_component
 from mesa_geo.visualization.components.geospace_component import MapModule
 
 # ---- Helpers ----
@@ -997,6 +1001,19 @@ class TestMarkerOverridePoint:
         with pytest.raises(SentinelError):
             mm.render(self._model_with_point())
 
+    def test_override_return_value_reaches_output(self):
+        sentinel = object()
+
+        class SentinelMap(MapModule):
+            def _get_marker(self, location, properties):
+                return sentinel
+
+        mm = SentinelMap(
+            portrayal_method=lambda _: {"color": "red"},
+            tiles=xyz.OpenStreetMap.Mapnik,
+        )
+        assert mm.render(self._model_with_point())["agents"][1] == [sentinel]
+
     def test_subclass_can_extend_default(self):
         class TitledMap(MapModule):
             def _get_marker(self, location, properties):
@@ -1065,3 +1082,91 @@ class TestNoneAndTransparentPassthrough:
         style = mm.render(model)["agents"][0]["features"][0]["properties"]["style"]
         assert style["color"] == "none"
         assert style["fillColor"] == "transparent"
+
+
+class TestRasterPortrayalForwarding:
+    """raster_portrayal is forwarded only when set, and does reach MapModule."""
+
+    @staticmethod
+    def _render_component(mocker, **component_kwargs):
+        model = mesa.Model()
+        mocker.patch.object(mesa.Model, "__new__", return_value=model)
+        mocker.patch.object(mesa.Model, "__init__", return_value=None)
+        solara.render(
+            SolaraViz(
+                model,
+                components=[
+                    make_geospace_component({"color": "gray"}, **component_kwargs)
+                ],
+            )
+        )
+        return model
+
+    def test_style_reaches_geospace_leaflet_and_mapmodule(self, mocker):
+        leaflet_spy = mocker.spy(mgv.components.geospace_component, "GeoSpaceLeaflet")
+        mapmodule_spy = mocker.spy(mgv.components.geospace_component, "MapModule")
+        style = PropertyLayerStyle(colormap="viridis")
+
+        model = self._render_component(mocker, raster_portrayal=style)
+
+        leaflet_spy.assert_called_with(
+            model,
+            {"color": "gray"},
+            None,
+            xyz.OpenStreetMap.Mapnik,
+            raster_portrayal=style,
+        )
+        assert mapmodule_spy.call_args.kwargs["raster_portrayal"] is style
+
+    def test_default_call_omits_the_keyword(self, mocker):
+        leaflet_spy = mocker.spy(mgv.components.geospace_component, "GeoSpaceLeaflet")
+
+        model = self._render_component(mocker)
+
+        leaflet_spy.assert_called_with(
+            model, {"color": "gray"}, None, xyz.OpenStreetMap.Mapnik
+        )
+        assert "raster_portrayal" not in leaflet_spy.call_args.kwargs
+
+
+class TestPortrayalDictReuse:
+    """A portrayal dict survives rendering and renders identically every time."""
+
+    @staticmethod
+    def _model_with_point():
+        model = mesa.Model()
+        model.space = mg.GeoSpace(crs="epsg:4326")
+        creator = mg.AgentCreator(agent_class=mg.GeoAgent, model=model, crs="epsg:4326")
+        model.space.add_agents([creator.create_agent(Point(1.0, 2.0))])
+        return model
+
+    def test_same_dict_rendered_twice_is_stable(self):
+        portrayal = {"marker_type": "CircleMarker", "color": "red", "radius": 7}
+        before = dict(portrayal)
+        model = self._model_with_point()
+        mm = MapModule(
+            portrayal_method=lambda _: portrayal, tiles=xyz.OpenStreetMap.Mapnik
+        )
+
+        first = mm.render(model)["agents"][1][0]
+        second = mm.render(model)["agents"][1][0]
+
+        assert portrayal == before
+        assert "marker_type" in portrayal
+        assert type(first) is type(second)
+        assert (first.color, first.radius) == (second.color, second.radius)
+
+    def test_default_marker_dict_keeps_its_keys(self):
+        portrayal = {"color": "red"}
+        before = dict(portrayal)
+        model = self._model_with_point()
+        mm = MapModule(
+            portrayal_method=lambda _: portrayal, tiles=xyz.OpenStreetMap.Mapnik
+        )
+
+        first = mm.render(model)["agents"][1][0]
+        second = mm.render(model)["agents"][1][0]
+
+        assert portrayal == before
+        assert "marker_type" not in portrayal
+        assert first.radius == second.radius == 5
