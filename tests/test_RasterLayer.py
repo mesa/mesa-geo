@@ -6,6 +6,7 @@ import warnings
 import mesa
 import numpy as np
 import rasterio as rio
+from mesa.agent import Agent
 
 import mesa_geo as mg
 
@@ -558,3 +559,52 @@ class TestRasterLayer(unittest.TestCase):
                 for idx in range(data.shape[0])
             )
         )
+
+    def test_agent_init_proxy_pos_interaction(self):
+        """Verify that Cell (as Agent subclass) constructs cleanly,
+        band proxy reads/writes through _data, and pos property still
+        behaves after Agent.__init__ sets self.pos = None."""
+        layer = self.raster_layer
+
+        band_data = np.arange(layer.height * layer.width, dtype=float).reshape(
+            layer.height, layer.width
+        )
+        layer.apply_raster(band_data[np.newaxis, :, :], attr_name="elevation")
+
+        cell = layer.cells[0][0]  # grid_x=0, grid_y=0
+        row, col = cell.rowcol
+        expected_val = band_data[row, col]
+        self.assertEqual(cell.elevation, expected_val)
+
+        cell.elevation = 999.0
+        self.assertEqual(layer._data["elevation"][row, col], 999.0)
+        self.assertEqual(cell.elevation, 999.0)
+
+        self.assertIsNotNone(cell.pos)
+        self.assertEqual(cell.pos, (0, 0))
+
+        self.assertIsInstance(cell, Agent)
+
+    def test_proxy_unknown_band_and_non_band_attr(self):
+        """Cell with a layer: reading an unknown band raises AttributeError,
+        and writing a non-band attribute falls back to normal instance storage."""
+        layer = self.raster_layer
+        cell = layer.cells[0][0]
+
+        with self.assertRaises(AttributeError):
+            _ = cell.not_a_band
+
+        cell.custom_attr = 123
+        self.assertEqual(cell.custom_attr, 123)
+        self.assertNotIn("custom_attr", layer._data)
+
+    def test_proxy_without_layer_reference(self):
+        """Cell with no _layer set falls back safely: reads raise AttributeError,
+        writes go to the instance dict (covers the except AttributeError branches)."""
+        cell = mg.Cell.__new__(mg.Cell)
+
+        with self.assertRaises(AttributeError):
+            _ = cell.anything
+
+        cell.plain = "ok"
+        self.assertEqual(cell.plain, "ok")
