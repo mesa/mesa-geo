@@ -39,7 +39,7 @@ class RasterBase(GeoBase):
     _transform: Affine
     _total_bounds: np.ndarray  # [min_x, min_y, max_x, max_y]
 
-    def __init__(self, width, height, crs, total_bounds):
+    def __init__(self, width, height, crs, total_bounds, name: str | None = None):
         """
         Initialize a raster base layer.
 
@@ -47,12 +47,15 @@ class RasterBase(GeoBase):
         :param height: Height of the raster base layer.
         :param crs: Coordinate reference system of the raster base layer.
         :param total_bounds: Bounds of the raster base layer in [min_x, min_y, max_x, max_y] format.
+        :param name: Optional human-readable name for lookup via
+            :meth:`~mesa_geo.GeoSpace.get_layer`.
         """
 
         super().__init__(crs)
         self._width = width
         self._height = height
         self._total_bounds = total_bounds
+        self.name = name
         self._update_transform()
 
     @property
@@ -373,9 +376,16 @@ class RasterLayer(RasterBase):
     _data: dict[str, np.ndarray]
 
     def __init__(
-        self, width, height, crs, total_bounds, model, cell_cls: type[Cell] = Cell
+        self,
+        width,
+        height,
+        crs,
+        total_bounds,
+        model,
+        cell_cls: type[Cell] = Cell,
+        name: str | None = None,
     ):
-        super().__init__(width, height, crs, total_bounds)
+        super().__init__(width, height, crs, total_bounds, name=name)
         self.model = model
         self.cell_cls = cell_cls
         self._attributes = set()
@@ -965,6 +975,7 @@ class RasterLayer(RasterBase):
         cell_cls: type[Cell] = Cell,
         attr_name: str | Sequence[str] | None = None,
         rio_opener: Callable | None = None,
+        name: str | None = None,
     ) -> RasterLayer:
         """
         Creates a RasterLayer from a raster file.
@@ -976,8 +987,9 @@ class RasterLayer(RasterBase):
             the number of bands, or a single base name to be suffixed per band. If None,
             names are generated. Default is None.
         :param Callable | None rio_opener: A callable passed to Rasterio open() function.
+        :param str | None name: Optional layer name for lookup via
+            :meth:`~mesa_geo.GeoSpace.get_layer`. Default is None.
         """
-
         with rio.open(raster_file, "r", opener=rio_opener) as dataset:
             values = dataset.read()
             _, height, width = values.shape
@@ -988,6 +1000,7 @@ class RasterLayer(RasterBase):
                 dataset.bounds.top,
             ]
             obj = cls(width, height, dataset.crs, total_bounds, model, cell_cls)
+            obj.name = name
             obj._transform = dataset.transform
             obj._sync_cell_xy()
             obj.apply_raster(values, attr_name=attr_name)
@@ -1027,13 +1040,15 @@ class RasterLayer(RasterBase):
 class ImageLayer(RasterBase):
     _values: np.ndarray
 
-    def __init__(self, values, crs, total_bounds):
+    def __init__(self, values, crs, total_bounds, name: str | None = None):
         """
         Initializes an ImageLayer.
 
         :param values: The values of the image layer.
         :param crs: The coordinate reference system of the image layer.
         :param total_bounds: The bounds of the image layer in [min_x, min_y, max_x, max_y] format.
+        :param name: Optional human-readable name for lookup via
+            :meth:`~mesa_geo.GeoSpace.get_layer`.
         """
 
         super().__init__(
@@ -1041,6 +1056,7 @@ class ImageLayer(RasterBase):
             height=values.shape[1],
             crs=crs,
             total_bounds=total_bounds,
+            name=name,
         )
         self._values = values.copy()
 
@@ -1115,15 +1131,16 @@ class ImageLayer(RasterBase):
             return layer
 
     @classmethod
-    def from_file(cls, image_file) -> ImageLayer:
+    def from_file(cls, image_file, name: str | None = None) -> ImageLayer:
         """
         Creates an ImageLayer from an image file.
 
         :param image_file: The path to the image file.
+        :param name: Optional layer name for lookup via
+            :meth:`~mesa_geo.GeoSpace.get_layer`. Default is None.
         :return: The ImageLayer.
         :rtype: ImageLayer
         """
-
         with rio.open(image_file, "r") as dataset:
             values = dataset.read()
             total_bounds = [
@@ -1133,6 +1150,7 @@ class ImageLayer(RasterBase):
                 dataset.bounds.top,
             ]
             obj = cls(values=values, crs=dataset.crs, total_bounds=total_bounds)
+            obj.name = name
             obj._transform = dataset.transform
             return obj
 
