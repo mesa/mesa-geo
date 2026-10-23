@@ -69,6 +69,7 @@ hidden: true
 ---
 Introduction <self>
 Tutorial <tutorials/intro_tutorial>
+Visualizing Raster Layers <raster_visualization>
 examples/overview
 API Documentation <apis/api_main>
 ```
