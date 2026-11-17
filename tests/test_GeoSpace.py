@@ -1,10 +1,12 @@
 import random
+import re
 import unittest
 import warnings
 
 import geopandas as gpd
 import mesa
 import numpy as np
+import pytest
 from shapely.geometry import Point, Polygon
 
 import mesa_geo as mg
@@ -99,25 +101,86 @@ class TestGeoSpace(unittest.TestCase):
         with self.assertWarns(Warning):
             self.geo_space.add_layer(self.image_layer)
         self.assertEqual(len(self.geo_space.layers), 1)
+        assert self.geo_space.layers[0] is self.image_layer
+        assert self.geo_space.get_layer("layer_0") is self.image_layer
 
         self.geo_space.warn_crs_conversion = False
-        # assert no warning
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
+        # should warn about adding the same layer again with same layer object
+        with self.assertWarns(UserWarning):
             self.geo_space.add_layer(self.image_layer)
+        assert self.geo_space.layers[1] is self.image_layer
+        assert self.geo_space.get_layer("layer_1") is self.image_layer
         self.assertEqual(len(self.geo_space.layers), 2)
+
+        # should warn about adding the same layer again with same layer object
+        with self.assertWarns(UserWarning):
+            self.geo_space.add_layer(self.image_layer, name="custom_name")
+        assert self.geo_space.layers[2] is self.image_layer
+        assert self.geo_space.get_layer("custom_name") is self.image_layer
+        self.assertEqual(len(self.geo_space.layers), 3)
 
     def test_add_vector_layer(self):
         with self.assertWarns(Warning):
             self.geo_space.add_layer(self.vector_layer)
         self.assertEqual(len(self.geo_space.layers), 1)
+        assert self.geo_space.layers[0] is self.vector_layer
+        assert self.geo_space.get_layer("layer_0") is self.vector_layer
 
         self.geo_space.warn_crs_conversion = False
-        # assert no warning
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
+        # should warn about adding the same layer again with same layer object
+        with self.assertWarns(UserWarning):
             self.geo_space.add_layer(self.vector_layer)
+        assert self.geo_space.layers[1] is self.vector_layer
+        assert self.geo_space.get_layer("layer_1") is self.vector_layer
         self.assertEqual(len(self.geo_space.layers), 2)
+
+        # should warn about adding the same layer again with same layer object
+        with self.assertWarns(UserWarning):
+            self.geo_space.add_layer(self.vector_layer, name="custom_name")
+        assert self.geo_space.layers[2] is self.vector_layer
+        assert self.geo_space.get_layer("custom_name") is self.vector_layer
+        self.assertEqual(len(self.geo_space.layers), 3)
+
+    def test_add_layer_without_name(self):
+        # layer_0
+        self.geo_space.add_layer(self.image_layer)
+        # layer_1
+        self.geo_space.add_layer(self.vector_layer)
+        self.geo_space.remove_layer("layer_0")
+
+        # name should be layer_2 even though there is only one layer in the space
+        # since layer_0 was removed
+        self.geo_space.add_layer(self.image_layer)
+        assert self.geo_space.get_layer("layer_2") is self.image_layer
+
+    def test_add_duplicate_layer_name(self):
+        self.geo_space.add_layer(self.image_layer, name="duplicate_name")
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A layer named 'duplicate_name' already exists. "
+                "Please choose a different name. "
+                "Currently registered layer names: ['duplicate_name']"
+            ),
+        ):
+            self.geo_space.add_layer(self.vector_layer, name="duplicate_name")
+
+    def test_remove_layer(self):
+        with self.assertRaises(KeyError):
+            self.geo_space.remove_layer("layer_does_not_exist")
+        self.geo_space.add_layer(self.image_layer, name="image_layer")
+        self.geo_space.add_layer(self.vector_layer, name="vector_layer")
+        self.assertEqual(len(self.geo_space.layers), 2)
+
+        self.geo_space.remove_layer("image_layer")
+        self.assertEqual(len(self.geo_space.layers), 1)
+        assert self.geo_space.get_layer("vector_layer") is self.vector_layer
+
+        with self.assertRaises(KeyError):
+            self.geo_space.get_layer("image_layer")
+
+        with self.assertRaises(KeyError):
+            self.geo_space.remove_layer("layer_does_not_exist")
 
     def test_get_neighbors_within_distance(self):
         self.geo_space.add_agents(self.agents)
@@ -280,6 +343,16 @@ class TestGeoSpace(unittest.TestCase):
 
         agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="EPSG:3395")
         space.add_agents([agent])
+        # layer name is 'layer_0' by default since no name is provided
+        space.add_layer(self.image_layer.to_crs("EPSG:3395", inplace=False))
+        space.add_layer(
+            self.image_layer.to_crs("EPSG:3395", inplace=False), name="image_layer"
+        )
+        space.add_layer(
+            self.vector_layer.to_crs("EPSG:3395", inplace=False), name="vector_layer"
+        )
+        # layer name is 'layer_3' by default since no name is provided
+        space.add_layer(self.vector_layer.to_crs("EPSG:3395", inplace=False))
 
         new_space = space.to_crs("EPSG:3857", inplace=False)
 
@@ -295,15 +368,57 @@ class TestGeoSpace(unittest.TestCase):
         self.assertIsNot(new_agent, agent)
         self.assertEqual(new_agent.crs.to_epsg(), 3857)
 
+        self.assertEqual(space.get_layer("layer_0").crs.to_epsg(), 3395)
+        new_layer_0 = new_space.get_layer("layer_0")
+        self.assertIsNot(new_layer_0, space.get_layer("layer_0"))
+        self.assertEqual(new_layer_0.crs.to_epsg(), 3857)
+
+        self.assertEqual(space.get_layer("image_layer").crs.to_epsg(), 3395)
+        new_image_layer = new_space.get_layer("image_layer")
+        self.assertIsNot(new_image_layer, space.get_layer("image_layer"))
+        self.assertEqual(new_image_layer.crs.to_epsg(), 3857)
+
+        self.assertEqual(space.get_layer("vector_layer").crs.to_epsg(), 3395)
+        new_vector_layer = new_space.get_layer("vector_layer")
+        self.assertIsNot(new_vector_layer, space.get_layer("vector_layer"))
+        self.assertEqual(new_vector_layer.crs.to_epsg(), 3857)
+
+        self.assertEqual(space.get_layer("layer_3").crs.to_epsg(), 3395)
+        new_layer_3 = new_space.get_layer("layer_3")
+        self.assertIsNot(new_layer_3, space.get_layer("layer_3"))
+        self.assertEqual(new_layer_3.crs.to_epsg(), 3857)
+
     def test_to_crs_inplace(self):
         model = mesa.Model()
         space = mg.GeoSpace(crs="EPSG:3395")
 
         agent = mg.GeoAgent(model=model, geometry=Point(0, 0), crs="EPSG:3395")
         space.add_agents([agent])
+        # layer name is 'layer_0' by default since no name is provided
+        space.add_layer(self.image_layer.to_crs("EPSG:3395", inplace=False))
+        space.add_layer(
+            self.image_layer.to_crs("EPSG:3395", inplace=False), name="image_layer"
+        )
+        space.add_layer(
+            self.vector_layer.to_crs("EPSG:3395", inplace=False), name="vector_layer"
+        )
+        # layer name is 'layer_3' by default since no name is provided
+        space.add_layer(self.vector_layer.to_crs("EPSG:3395", inplace=False))
+
+        self.assertEqual(space.crs.to_epsg(), 3395)
+        self.assertEqual(space.agents[0].crs.to_epsg(), 3395)
+        self.assertEqual(space.get_layer("layer_0").crs.to_epsg(), 3395)
+        self.assertEqual(space.get_layer("image_layer").crs.to_epsg(), 3395)
+        self.assertEqual(space.get_layer("vector_layer").crs.to_epsg(), 3395)
+        self.assertEqual(space.get_layer("layer_3").crs.to_epsg(), 3395)
 
         space.to_crs("EPSG:3857", inplace=True)
 
         self.assertEqual(space.crs.to_epsg(), 3857)
         self.assertEqual(space.agents[0].crs.to_epsg(), 3857)
+        self.assertEqual(space.get_layer("layer_0").crs.to_epsg(), 3857)
         self.assertEqual(space.transformer.source_crs.to_epsg(), space.crs.to_epsg())
+
+        self.assertEqual(space.get_layer("image_layer").crs.to_epsg(), 3857)
+        self.assertEqual(space.get_layer("vector_layer").crs.to_epsg(), 3857)
+        self.assertEqual(space.get_layer("layer_3").crs.to_epsg(), 3857)

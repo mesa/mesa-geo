@@ -7,30 +7,24 @@ import mesa_geo as mg
 
 class TestRasterWebTile(unittest.TestCase):
     def test_from_xyzservices(self):
-        map_tile = mg.RasterWebTile.from_xyzservices(xyz.CartoDB.Positron)
+        provider = xyz.OpenStreetMap.Mapnik
+        map_tile = mg.RasterWebTile.from_xyzservices(provider)
 
-        self.assertEqual(map_tile.url, xyz.CartoDB.Positron.url)
-        self.assertEqual(
-            map_tile.options,
-            {
-                "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                "subdomains": "abcd",
-                "max_zoom": 20,
-                "variant": "light_all",
-                "name": "CartoDB.Positron",
-            },
-        )
+        self.assertEqual(map_tile.url, provider.url)
         self.assertEqual(map_tile.kind, "raster_web_tile")
+        self.assertEqual(map_tile.options["name"], provider.name)
+        self.assertEqual(map_tile.options["max_zoom"], provider.max_zoom)
+        self.assertEqual(map_tile.options["attribution"], provider.html_attribution)
+        self.assertNotIn("url", map_tile.options)
+        self.assertNotIn("html_attribution", map_tile.options)
         self.assertEqual(
             map_tile.to_dict(),
             {
-                "url": xyz.CartoDB.Positron.url,
+                "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                 "options": {
-                    "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                    "subdomains": "abcd",
-                    "max_zoom": 20,
-                    "variant": "light_all",
-                    "name": "CartoDB.Positron",
+                    "max_zoom": 19,
+                    "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    "name": "OpenStreetMap.Mapnik",
                 },
                 "kind": "raster_web_tile",
             },

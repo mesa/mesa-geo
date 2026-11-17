@@ -17,7 +17,7 @@ from shapely.prepared import prep
 
 from mesa_geo.geo_base import GeoBase
 from mesa_geo.geoagent import GeoAgent
-from mesa_geo.raster_layers import ImageLayer, RasterBase, RasterLayer
+from mesa_geo.raster_layers import ImageLayer, RasterLayer
 
 
 class GeoSpace(GeoBase):
@@ -43,8 +43,7 @@ class GeoSpace(GeoBase):
         )
         self.warn_crs_conversion = warn_crs_conversion
         self._agent_layer = _AgentLayer()
-        self._static_layers = []
-        self._layer_names: dict[str, ImageLayer | RasterLayer | gpd.GeoDataFrame] = {}
+        self._layers: dict[str, ImageLayer | RasterLayer | gpd.GeoDataFrame] = {}
         self._total_bounds = None  # [min_x, min_y, max_x, max_y]
 
     def to_crs(self, crs, inplace=False) -> GeoSpace | None:
@@ -55,7 +54,7 @@ class GeoSpace(GeoBase):
                 return None
             for agent in self.agents:
                 agent.to_crs(target_crs, inplace=True)
-            for layer in self.layers:
+            for layer in self._layers.values():
                 layer.to_crs(target_crs, inplace=True)
 
             self.crs = target_crs
@@ -71,10 +70,9 @@ class GeoSpace(GeoBase):
             )
             for agent in self.agents:
                 geospace.add_agents(agent.to_crs(target_crs, inplace=False))
-            names_by_id = {id(lyr): nm for nm, lyr in self._layer_names.items()}
-            for layer in self.layers:
+            for layer_name, layer in self._layers.items():
                 new_layer = layer.to_crs(target_crs, inplace=False)
-                geospace.add_layer(new_layer, name=names_by_id.get(id(layer)))
+                geospace.add_layer(new_layer, name=layer_name)
             return geospace
 
     @property
@@ -95,9 +93,21 @@ class GeoSpace(GeoBase):
     @property
     def layers(self) -> list[ImageLayer | RasterLayer | gpd.GeoDataFrame]:
         """
-        Return a list of all layers in the Geospace.
+        Return a list of registered layers in insertion order.
+
+        The returned list is a shallow snapshot of the layer registry. Adding,
+        removing, or reordering entries in this list does not modify the GeoSpace.
+        Use :meth:`add_layer` and :meth:`remove_layer` to change its registrations.
+
+        The layer objects themselves are shared with the GeoSpace, so modifying
+        an object through this list modifies the registered layer. An object
+        registered under multiple names appears once for each registration.
+
+        :return:
+            A new list containing the registered layer objects in insertion order.
+        :rtype: list[ImageLayer | RasterLayer | gpd.GeoDataFrame]
         """
-        return self._static_layers
+        return list(self._layers.values())
 
     @property
     def total_bounds(self) -> np.ndarray | None:
@@ -138,25 +148,54 @@ class GeoSpace(GeoBase):
         layer: ImageLayer | RasterLayer | gpd.GeoDataFrame,
         name: str | None = None,
     ) -> None:
-        """Add a layer to the Geospace.
-
-        :param ImageLayer | RasterLayer | gpd.GeoDataFrame layer: The layer to add.
-        :param str | None name: Optional name for later retrieval via
-            :meth:`get_layer`. Must be unique within this GeoSpace.
-        :raises ValueError: If *name* is already registered or *layer* is already
-            registered under another name.
         """
-        if name is not None:
-            if name in self._layer_names:
-                raise ValueError(
-                    f"A layer named {name!r} is already registered. "
-                    f"Registered names: {list(self._layer_names)}"
+        Add a layer to the GeoSpace and register it by name.
+
+        Layers retain their insertion order. If the layer's coordinate reference
+        system differs from that of the GeoSpace, the layer is reprojected in
+        place before registration.
+
+        The same layer object may be registered under multiple names. Adding an
+        already registered object emits a warning and creates another registration
+        referencing that object.
+
+        :param ImageLayer | RasterLayer | gpd.GeoDataFrame layer:
+            The layer to add.
+        :param str | None name:
+            Unique registration name for retrieval with :meth:`get_layer` and
+            removal with :meth:`remove_layer`. If None, a name of the form
+            ``layer_<index>`` is generated. Default is None.
+        :raises ValueError:
+            If the registration name is already in use.
+        :warns UserWarning:
+            If the layer object is already registered. Also emitted before CRS
+            conversion when ``warn_crs_conversion`` is True.
+        """
+
+        # default name is "layer_" + index of layer in self._layers if name is None
+        # e.g, if there are 3 layers in self._layers, the next layer will be named "layer_3"
+        # but if a layer is removed, the next layer will be named "layer_3" again, which is fine
+        # and if an earlier layer is removed, the next layer should be named "layer_4" to avoid name collision with the existing layer_3
+        if name is None:
+            index = len(self._layers)
+            while f"layer_{index}" in self._layers:
+                index += 1
+            name = f"layer_{index}"
+
+        if name in self._layers:
+            raise ValueError(
+                f"A layer named {name!r} already exists. Please choose a different name. "
+                f"Currently registered layer names: {list(self._layers.keys())}"
+            )
+        for registered_name, registered_layer in self._layers.items():
+            if registered_layer is layer:
+                warnings.warn(
+                    f"The layer {layer.__class__.__name__} is already registered under the name {registered_name!r}. "
+                    f"Consider using `get_layer({registered_name!r})` to retrieve it instead of adding it again.",
+                    UserWarning,
+                    stacklevel=2,
                 )
-            for registered_name, registered_layer in self._layer_names.items():
-                if registered_layer is layer:
-                    raise ValueError(
-                        f"Layer is already registered with name {registered_name!r}."
-                    )
+
         if not self.crs.is_exact_same(layer.crs):
             if self.warn_crs_conversion:
                 warnings.warn(
@@ -168,12 +207,8 @@ class GeoSpace(GeoBase):
                     stacklevel=2,
                 )
             layer.to_crs(self.crs, inplace=True)
-        if name is not None:
-            self._layer_names[name] = layer
-            if isinstance(layer, RasterBase):
-                layer.name = name
+        self._layers[name] = layer
         self._total_bounds = None
-        self._static_layers.append(layer)
 
     def get_layer(self, name: str) -> ImageLayer | RasterLayer | gpd.GeoDataFrame:
         """Retrieve a layer by its registered name.
@@ -182,27 +217,25 @@ class GeoSpace(GeoBase):
         :raises KeyError: If no layer with that name exists.
         """
         try:
-            return self._layer_names[name]
+            return self._layers[name]
         except KeyError:
-            available = list(self._layer_names) or "(none)"
             raise KeyError(
-                f"No layer named {name!r}. Available names: {available}"
+                f"No layer named {name!r}. Available names: {list(self._layers.keys())}"
             ) from None
 
-    def _name_for_layer(
-        self, layer: ImageLayer | RasterLayer | gpd.GeoDataFrame
-    ) -> str | None:
-        """Return the registered name for *layer*, or ``None``.
+    def remove_layer(self, name: str) -> None:
+        """Remove a layer by its registered name.
 
-        If *layer* was added without an explicit name via :meth:`add_layer`,
-        this falls back to ``layer.name`` (e.g. for render-time labelling), even though
-        unregistered layers cannot be retrieved via :meth:`get_layer`.
+        :param str name: The name passed to :meth:`add_layer`.
+        :raises KeyError: If no layer with that name exists.
         """
-        for registered_name, registered_layer in self._layer_names.items():
-            if registered_layer is layer:
-                return registered_name
-        name = getattr(layer, "name", None)
-        return name if isinstance(name, str) else None
+        try:
+            del self._layers[name]
+            self._total_bounds = None
+        except KeyError:
+            raise KeyError(
+                f"No layer named {name!r}. Available names: {list(self._layers.keys())}"
+            ) from None
 
     def _check_agent(self, agent):
         if hasattr(agent, "geometry"):
