@@ -33,17 +33,17 @@ jobs:
       fail-fast: False
       matrix:
         os: [windows, ubuntu, macos]
-        python-version: ["3.14"]
+        python-version: ["3.15"]
         name: [""]
         include:
           - os: ubuntu
-            python-version: "3.13"
-          - os: ubuntu
             python-version: "3.12"
           - os: ubuntu
-            python-version: "3.11"
+            python-version: "3.13"
           - os: ubuntu
             python-version: "3.14"
+          - os: ubuntu
+            python-version: "3.15"
             pip-pre: "--pre"  # Installs pre-release versions of pip dependencies
             name: "Pre-release dependencies"  # Mainly to test Mesa pre-releases
 
