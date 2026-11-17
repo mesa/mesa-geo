@@ -45,7 +45,7 @@ dependencies = [
   "libpysal",
   "rtree",
   "rasterio>=1.4b1",
-  "shapely",
+  "shapely>=2.1",
   "pyproj",
   "folium",
   "xyzservices>=2022.9.0",
