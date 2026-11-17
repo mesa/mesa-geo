@@ -373,7 +373,13 @@ class RasterLayer(RasterBase):
     _data: dict[str, np.ndarray]
 
     def __init__(
-        self, width, height, crs, total_bounds, model, cell_cls: type[Cell] = Cell
+        self,
+        width,
+        height,
+        crs,
+        total_bounds,
+        model,
+        cell_cls: type[Cell] = Cell,
     ):
         super().__init__(width, height, crs, total_bounds)
         self.model = model
@@ -977,7 +983,6 @@ class RasterLayer(RasterBase):
             names are generated. Default is None.
         :param Callable | None rio_opener: A callable passed to Rasterio open() function.
         """
-
         with rio.open(raster_file, "r", opener=rio_opener) as dataset:
             values = dataset.read()
             _, height, width = values.shape
@@ -1123,7 +1128,6 @@ class ImageLayer(RasterBase):
         :return: The ImageLayer.
         :rtype: ImageLayer
         """
-
         with rio.open(image_file, "r") as dataset:
             values = dataset.read()
             total_bounds = [

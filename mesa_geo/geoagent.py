@@ -12,9 +12,9 @@ import geopandas as gpd
 import numpy as np
 import pyproj
 from mesa import Agent, Model
+from shapely import transform
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform
 
 from mesa_geo.geo_base import GeoBase
 
@@ -65,7 +65,9 @@ class GeoAgent(Agent, GeoBase):
         Return the transformed geometry given a transformer.
         """
 
-        return transform(transformer.transform, self.geometry)
+        return transform(
+            self.geometry, transformer.transform, interleaved=False, include_z=None
+        )
 
     def step(self):
         """
@@ -80,7 +82,7 @@ class GeoAgent(Agent, GeoBase):
         properties = dict(vars(self))
         properties["model"] = str(self.model)
         geometry = properties.pop("geometry")
-        geometry = transform(self.model.space.transformer.transform, geometry)
+        geometry = self.get_transformed_geometry(self.model.space.transformer)
 
         return {
             "type": "Feature",
