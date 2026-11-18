@@ -280,6 +280,20 @@ class GeoSpace(GeoBase):
         self._agent_layer.remove_agent(agent)
         self._total_bounds = None
 
+    def update_agent(self, agent):
+        """Update the spatial index of an agent after its geometry changed.
+
+        Call this after modifying ``agent.geometry`` of an agent already in the
+        GeoSpace, so that spatial queries (e.g., ``agents_at``,
+        ``get_neighbors_within_distance``) and ``total_bounds`` reflect its new
+        location.
+
+        :param GeoAgent agent: The agent whose geometry has changed.
+        :raises ValueError: If the agent is not in the GeoSpace.
+        """
+        self._agent_layer.update_agent(agent)
+        self._total_bounds = None
+
     def get_relation(self, agent, relation):
         """Return a list of related agents.
 
@@ -345,6 +359,9 @@ class _AgentLayer:
         # rtree index for spatial indexing (e.g., neighbors within distance, agents at pos, etc.)
         self._idx = None
         self._id_to_agent = {}
+        # bounds each agent was inserted into the rtree index with, so that
+        # entries can be deleted even if the agent's geometry has changed since
+        self._indexed_bounds = {}
         # bounds of the layer in [min_x, min_y, max_x, max_y] format
         # While it is possible to calculate the bounds from rtree index,
         # total_bounds is almost always needed (e.g., for plotting), while rtree index is not.
@@ -378,6 +395,7 @@ class _AgentLayer:
         """
 
         self._idx = None
+        self._indexed_bounds = {}
         self._neighborhood = None
         self._total_bounds = None
 
@@ -425,9 +443,13 @@ class _AgentLayer:
         agents = list(self.agents) + new_agents
 
         if len(agents) > 0:
+            self._indexed_bounds = {
+                agent.unique_id: agent.geometry.bounds for agent in agents
+            }
             # Bulk insert agents
             index_data = (
-                (agent.unique_id, agent.geometry.bounds, None) for agent in agents
+                (unique_id, bounds, None)
+                for unique_id, bounds in self._indexed_bounds.items()
             )
             self._idx = index.Index(index_data)
 
@@ -447,7 +469,9 @@ class _AgentLayer:
             agent = agents
             self._id_to_agent[agent.unique_id] = agent
             if self._idx:
-                self._idx.insert(agent.unique_id, agent.geometry.bounds, None)
+                bounds = agent.geometry.bounds
+                self._idx.insert(agent.unique_id, bounds, None)
+                self._indexed_bounds[agent.unique_id] = bounds
         else:
             for agent in agents:
                 self._id_to_agent[agent.unique_id] = agent
@@ -462,7 +486,28 @@ class _AgentLayer:
 
         del self._id_to_agent[agent.unique_id]
         if self._idx:
-            self._idx.delete(agent.unique_id, agent.geometry.bounds)
+            # delete with the bounds the agent was indexed with, which differ
+            # from its current bounds if its geometry changed after indexing
+            bounds = self._indexed_bounds.pop(agent.unique_id, None)
+            if bounds is not None:
+                self._idx.delete(agent.unique_id, bounds)
+        self._total_bounds = None
+
+    def update_agent(self, agent):
+        """
+        Update the spatial index of an agent whose geometry has changed.
+        """
+
+        if agent.unique_id not in self._id_to_agent:
+            raise ValueError(f"Agent {agent.unique_id} is not in the layer.")
+        if self._idx:
+            old_bounds = self._indexed_bounds.get(agent.unique_id)
+            if old_bounds is not None:
+                self._idx.delete(agent.unique_id, old_bounds)
+            new_bounds = agent.geometry.bounds
+            self._idx.insert(agent.unique_id, new_bounds, None)
+            self._indexed_bounds[agent.unique_id] = new_bounds
+        self._neighborhood = None
         self._total_bounds = None
 
     def get_relation(self, agent, relation):

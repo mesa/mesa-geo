@@ -97,6 +97,41 @@ class TestGeoSpace(unittest.TestCase):
         self.assertEqual(len(self.geo_space.agents), len(self.agents) - 1)
         self.assertTrue(agent_to_remove.unique_id not in remaining_agent_idx)
 
+    def test_remove_agent_after_geometry_change(self):
+        self.geo_space.add_agents(self.agents)
+        # build the spatial index
+        list(self.geo_space.agents_at((1, 1)))
+
+        moved_agent = self.agents[0]
+        moved_agent.geometry = Point(50, 50)
+        self.geo_space.remove_agent(moved_agent)
+
+        # the stale index entry must not be returned (previously raised KeyError)
+        agents_at = list(self.geo_space.agents_at((1, 1)))
+        self.assertEqual(len(agents_at), len(self.agents) - 1)
+        self.assertNotIn(moved_agent, agents_at)
+
+    def test_update_agent(self):
+        self.geo_space.add_agents(self.agents)
+        # build the spatial index
+        list(self.geo_space.agents_at((1, 1)))
+        np.testing.assert_array_equal(self.geo_space.total_bounds, [1, 1, 1, 1])
+
+        moved_agent = self.agents[0]
+        moved_agent.geometry = Point(50, 50)
+        self.geo_space.update_agent(moved_agent)
+
+        self.assertEqual(list(self.geo_space.agents_at((50, 50))), [moved_agent])
+        self.assertNotIn(moved_agent, list(self.geo_space.agents_at((1, 1))))
+        np.testing.assert_array_equal(self.geo_space.total_bounds, [1, 1, 50, 50])
+
+        self.geo_space.remove_agent(moved_agent)
+        self.assertEqual(list(self.geo_space.agents_at((50, 50))), [])
+
+    def test_update_agent_not_in_space(self):
+        with self.assertRaises(ValueError):
+            self.geo_space.update_agent(self.agents[0])
+
     def test_add_image_layer(self):
         with self.assertWarns(Warning):
             self.geo_space.add_layer(self.image_layer)
