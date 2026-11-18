@@ -299,6 +299,8 @@ class GeoSpace(GeoBase):
 
         Distance is measured as a buffer around the agent's geometry,
         set center=True to calculate distance from center.
+        The agent itself is not included, consistent with `get_relation`
+        and `get_neighbors`.
         """
         yield from self._agent_layer.get_neighbors_within_distance(
             agent, distance, center, relation
@@ -497,6 +499,8 @@ class _AgentLayer:
 
         Distance is measured as a buffer around the agent's geometry,
         set center=True to calculate distance from center.
+        The agent itself is not included, consistent with `get_relation`
+        and `get_neighbors`.
         """
         self._ensure_index()
         if center:
@@ -506,7 +510,9 @@ class _AgentLayer:
         possible_neighbors = self._get_rtree_intersections(geometry)
         prepared_geometry = prep(geometry)
         for other_agent in possible_neighbors:
-            if getattr(prepared_geometry, relation)(other_agent.geometry):
+            if other_agent.unique_id != agent.unique_id and getattr(
+                prepared_geometry, relation
+            )(other_agent.geometry):
                 yield other_agent
 
     def agents_at(self, pos):

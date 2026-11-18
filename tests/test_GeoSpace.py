@@ -191,12 +191,14 @@ class TestGeoSpace(unittest.TestCase):
                 agent_to_check, distance=1.0, center=True
             )
         )
-        self.assertEqual(len(neighbors), 7)
+        self.assertEqual(len(neighbors), 6)
+        self.assertNotIn(agent_to_check, neighbors)
 
         neighbors = list(
             self.geo_space.get_neighbors_within_distance(agent_to_check, distance=1.0)
         )
-        self.assertEqual(len(neighbors), 7)
+        self.assertEqual(len(neighbors), 6)
+        self.assertNotIn(agent_to_check, neighbors)
 
     def test_get_agents_as_GeoDataFrame(self):
         self.geo_space.add_agents(self.agents)
